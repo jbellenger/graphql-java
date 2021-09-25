@@ -59,6 +59,10 @@ public class RulesVisitor implements DocumentVisitor {
         Context asRoot(boolean root) {
             return new Context(this.rules, this.seen, root);
         }
+
+        Context resetSeen() {
+            return new Context(this.rules, new HashSet<>(), root);
+        }
     }
 
     public RulesVisitor(ValidationContext validationContext, List<AbstractRule> rules) {
@@ -152,6 +156,7 @@ public class RulesVisitor implements DocumentVisitor {
             if (fragment != null && !ancestors.contains(fragment)) {
                 Context newCtx = contextStack.peek()
                     .asRoot(false)
+                    .resetSeen()
                     .withRules(rulesVisitingFragmentSpreads);
                 contextStack.push(newCtx);
                 new LanguageTraversal(ancestors).traverse(fragment, this);
@@ -171,7 +176,11 @@ public class RulesVisitor implements DocumentVisitor {
     private void checkFragmentDefinition(FragmentDefinition node, List<AbstractRule> rules) {
         Context ctx = contextStack.peek();
         if (ctx.root) {
-            List<AbstractRule> localRules = filterVisitFragmentSpreads(rules, false);
+            // Replace the rules for this subtree to skip rules with isVisitFragmentSpreads
+            // expect that these rules will be covered by checkFragmentSpread
+            ImmutableList<AbstractRule> localRules = filterVisitFragmentSpreads(rules, false);
+            contextStack.push(contextStack.pop().withRules(localRules));
+
             localRules.forEach(r -> r.checkFragmentDefinition(node));
         } else {
             rules.forEach(r -> r.checkFragmentDefinition(node));
