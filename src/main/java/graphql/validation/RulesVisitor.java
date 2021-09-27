@@ -88,6 +88,7 @@ public class RulesVisitor implements DocumentVisitor {
         }
 
         ImmutableSet<AbstractRule> uncheckedRulesForNode() {
+            // TODO: this doesn't actually de-dupe like I intended
             HashSet<AbstractRule> unchecked = new HashSet<>(rulesInScope);
             unchecked.removeAll(suppressed);
             for (Scope scope = this; scope != null && !unchecked.isEmpty() && scope.root == this.root; scope = scope.parent) {
