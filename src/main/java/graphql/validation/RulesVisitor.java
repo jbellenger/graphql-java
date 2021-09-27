@@ -24,25 +24,18 @@ import graphql.language.VariableDefinition;
 import graphql.language.VariableReference;
 
 @Internal
+@SuppressWarnings("rawtypes")
 public class RulesVisitor implements DocumentVisitor {
-
     private final ValidationContext validationContext;
-    private boolean subVisitor;
-    // JMB TODO: maybe make these the same stack
+    private int fragmentSpreadVisitDepth;
     private final Stack<Node> popRulesStackOnLeave = new Stack<>();
     private final Stack<ImmutableList<AbstractRule>> rulesStack = new Stack<>();
-
-    // JMB TODO: this sucks
     private final Set<String> visitedFragmentSpreads = new HashSet<>();
 
     public RulesVisitor(ValidationContext validationContext, List<AbstractRule> rules) {
-        this(validationContext, rules, false);
-    }
-
-    public RulesVisitor(ValidationContext validationContext, List<AbstractRule> rules, boolean subVisitor) {
         this.validationContext = validationContext;
         this.rulesStack.push(ImmutableList.copyOf(rules));
-        this.subVisitor = subVisitor;
+        this.fragmentSpreadVisitDepth = 0;
     }
 
     private ImmutableList<AbstractRule> filterRulesVisitingFragmentSpreads(List<AbstractRule> rules, boolean isVisitFragmentSpreads) {
@@ -122,11 +115,9 @@ public class RulesVisitor implements DocumentVisitor {
             if (fragment != null && !ancestors.contains(fragment) && !visitedFragmentSpreads.contains(node.getName())) {
                 visitedFragmentSpreads.add(node.getName());
                 rulesStack.push(rulesVisitingFragmentSpreads);
-                // JMB TODO: make this nicer
-                boolean oldSubVisitor = this.subVisitor;
-                subVisitor = true;
+                fragmentSpreadVisitDepth++;
                 new LanguageTraversal(ancestors).traverse(fragment, this);
-                this.subVisitor = oldSubVisitor;
+                fragmentSpreadVisitDepth--;
                 rulesStack.pop();
             }
         }
@@ -134,7 +125,7 @@ public class RulesVisitor implements DocumentVisitor {
 
     private void checkFragmentDefinition(FragmentDefinition node, List<AbstractRule> rules) {
         ImmutableList<AbstractRule> scopeRules = (ImmutableList<AbstractRule>) rules;
-        if (!subVisitor) {
+        if (fragmentSpreadVisitDepth == 0) {
             scopeRules = filterRulesVisitingFragmentSpreads(rules, false);
             popRulesStackOnLeave.push(node);
             rulesStack.push(scopeRules);
