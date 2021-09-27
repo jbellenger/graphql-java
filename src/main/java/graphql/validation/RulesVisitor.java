@@ -6,8 +6,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.Stack;
 
-import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Iterators;
+import com.google.common.collect.ImmutableList;
 
 import graphql.Internal;
 import graphql.language.Argument;
@@ -25,254 +24,165 @@ import graphql.language.VariableDefinition;
 import graphql.language.VariableReference;
 
 @Internal
-@SuppressWarnings("rawtypes")
 public class RulesVisitor implements DocumentVisitor {
+
     private final ValidationContext validationContext;
-    private final Stack<Scope> scopes;
+    private boolean subVisitor;
+    // JMB TODO: maybe make these the same stack
+    private final Stack<Node> popRulesStackOnLeave = new Stack<>();
+    private final Stack<ImmutableList<AbstractRule>> rulesStack = new Stack<>();
 
-    private class Scope {
-        private final boolean root;
-        private final Node node;
-        private final Scope parent;
-        private final ImmutableSet<AbstractRule> rulesInScope;
-        private final ImmutableSet<AbstractRule> checked;
-        private final ImmutableSet<AbstractRule> suppressed;
-
-        Scope(ImmutableSet<AbstractRule> rulesInScope, boolean root) {
-            this(
-                rulesInScope,
-                ImmutableSet.of(),
-                ImmutableSet.of(),
-                null,
-                null,
-                root
-            );
-        }
-
-        private Scope(
-            ImmutableSet<AbstractRule> rulesInScope,
-            ImmutableSet<AbstractRule> checked,
-            ImmutableSet<AbstractRule> suppressed,
-            Node node,
-            Scope parent,
-            boolean root
-        ) {
-            this.rulesInScope = rulesInScope;
-            this.checked = checked;
-            this.suppressed = suppressed;
-            this.node = node;
-            this.parent = parent;
-            this.root = root;
-        }
-
-        Scope withChecked(ImmutableSet<AbstractRule> checked) {
-            return new Scope(rulesInScope, checked, suppressed, node, parent, root);
-        }
-
-        Scope withSuppressed(ImmutableSet<AbstractRule> suppressed) {
-            Iterator<AbstractRule> itr = Iterators.concat(suppressed.iterator(), this.suppressed.iterator());
-            ImmutableSet<AbstractRule> mergedSuppressed = ImmutableSet.copyOf(itr);
-            return new Scope(rulesInScope, checked, mergedSuppressed, node, parent, root);
-        }
-
-        Scope withRulesInScope(ImmutableSet<AbstractRule> rulesInScope) {
-            return new Scope(rulesInScope, checked, suppressed, node, parent, root);
-        }
-
-        Scope asRoot(boolean root) {
-            return new Scope(rulesInScope, checked, suppressed, node, parent, root);
-        }
-
-        Scope child(Node node) {
-            return new Scope(rulesInScope, ImmutableSet.of(), suppressed, node, this, root);
-        }
-
-        ImmutableSet<AbstractRule> uncheckedRulesForNode() {
-            // TODO: this doesn't actually de-dupe like I intended
-            HashSet<AbstractRule> unchecked = new HashSet<>(rulesInScope);
-            unchecked.removeAll(suppressed);
-            for (Scope scope = this; scope != null && !unchecked.isEmpty() && scope.root == this.root; scope = scope.parent) {
-                if (scope.node == node) {
-                    unchecked.removeAll(scope.checked);
-                }
-            }
-            return ImmutableSet.copyOf(unchecked);
-        }
-    }
+    // JMB TODO: this sucks
+    private final Set<String> visitedFragmentSpreads = new HashSet<>();
 
     public RulesVisitor(ValidationContext validationContext, List<AbstractRule> rules) {
+        this(validationContext, rules, false);
+    }
+
+    public RulesVisitor(ValidationContext validationContext, List<AbstractRule> rules, boolean subVisitor) {
         this.validationContext = validationContext;
-        this.scopes = new Stack<>();
-        this.scopes.push(new Scope(ImmutableSet.copyOf(rules), true));
+        this.rulesStack.push(ImmutableList.copyOf(rules));
+        this.subVisitor = subVisitor;
+    }
+
+    private ImmutableList<AbstractRule> filterRulesVisitingFragmentSpreads(List<AbstractRule> rules, boolean isVisitFragmentSpreads) {
+        Iterator<AbstractRule> itr = rulesStack.peek()
+            .stream()
+            .filter(r -> r.isVisitFragmentSpreads() == isVisitFragmentSpreads)
+            .iterator();
+        return ImmutableList.copyOf(itr);
     }
 
     @Override
     public void enter(Node node, List<Node> ancestors) {
         validationContext.getTraversalContext().enter(node, ancestors);
-        Scope scope = this.scopes.peek().child(node);
-        this.scopes.push(scope);
+        List<AbstractRule> rulesToConsider = rulesStack.peek();
 
-        Scope newScope;
         if (node instanceof Document){
-            newScope = checkDocument((Document) node, scope);
+            checkDocument((Document) node, rulesToConsider);
         } else if (node instanceof Argument) {
-            newScope = checkArgument((Argument) node, scope);
+            checkArgument((Argument) node, rulesToConsider);
         } else if (node instanceof TypeName) {
-            newScope = checkTypeName((TypeName) node, scope);
+            checkTypeName((TypeName) node, rulesToConsider);
         } else if (node instanceof VariableDefinition) {
-            newScope = checkVariableDefinition((VariableDefinition) node, scope);
+            checkVariableDefinition((VariableDefinition) node, rulesToConsider);
         } else if (node instanceof Field) {
-            newScope = checkField((Field) node, scope);
+            checkField((Field) node, rulesToConsider);
         } else if (node instanceof InlineFragment) {
-            newScope = checkInlineFragment((InlineFragment) node, scope);
+            checkInlineFragment((InlineFragment) node, rulesToConsider);
         } else if (node instanceof Directive) {
-            newScope = checkDirective((Directive) node, ancestors, scope);
+            checkDirective((Directive) node, ancestors, rulesToConsider);
         } else if (node instanceof FragmentSpread) {
-            newScope = checkFragmentSpread((FragmentSpread) node, ancestors, scope);
+            checkFragmentSpread((FragmentSpread) node, rulesToConsider, ancestors);
         } else if (node instanceof FragmentDefinition) {
-            newScope = checkFragmentDefinition((FragmentDefinition) node, scope);
+            checkFragmentDefinition((FragmentDefinition) node, rulesToConsider);
         } else if (node instanceof OperationDefinition) {
-            newScope = checkOperationDefinition((OperationDefinition) node, scope);
+            checkOperationDefinition((OperationDefinition) node, rulesToConsider);
         } else if (node instanceof VariableReference) {
-            newScope = checkVariable((VariableReference) node, scope);
+            checkVariable((VariableReference) node, rulesToConsider);
         } else if (node instanceof SelectionSet) {
-            newScope = checkSelectionSet((SelectionSet) node, scope);
-        } else {
-            newScope = scope;
+            checkSelectionSet((SelectionSet) node, rulesToConsider);
         }
-
-        // replace the top scope in the stack with the modified scope returned by the checker
-        scopes.pop();
-        scopes.push(newScope);
     }
 
-    private Scope checkDocument(Document node, Scope scope) {
-        ImmutableSet<AbstractRule> rules = scope.uncheckedRulesForNode();
+    private void checkDocument(Document node, List<AbstractRule> rules) {
         rules.forEach(r -> r.checkDocument(node));
-        return scope.withChecked(rules);
     }
 
-    private Scope checkArgument(Argument node, Scope scope) {
-        ImmutableSet<AbstractRule> rules = scope.uncheckedRulesForNode();
+    private void checkArgument(Argument node, List<AbstractRule> rules) {
         rules.forEach(r -> r.checkArgument(node));
-        return scope.withChecked(rules);
     }
 
-    private Scope checkTypeName(TypeName node, Scope scope) {
-        ImmutableSet<AbstractRule> rules = scope.uncheckedRulesForNode();
+    private void checkTypeName(TypeName node, List<AbstractRule> rules) {
         rules.forEach(r -> r.checkTypeName(node));
-        return scope.withChecked(rules);
     }
 
-    private Scope checkVariableDefinition(VariableDefinition node, Scope scope) {
-        ImmutableSet<AbstractRule> rules = scope.uncheckedRulesForNode();
+    private void checkVariableDefinition(VariableDefinition node, List<AbstractRule> rules) {
         rules.forEach(r -> r.checkVariableDefinition(node));
-        return scope.withChecked(rules);
     }
 
-    private Scope checkField(Field node, Scope scope) {
-        ImmutableSet<AbstractRule> rules = scope.uncheckedRulesForNode();
+    private void checkField(Field node, List<AbstractRule> rules) {
         rules.forEach(r -> r.checkField(node));
-        return scope.withChecked(rules);
     }
 
-    private Scope checkInlineFragment(InlineFragment node, Scope scope) {
-        ImmutableSet<AbstractRule> rules = scope.uncheckedRulesForNode();
+    private void checkInlineFragment(InlineFragment node, List<AbstractRule> rules) {
         rules.forEach(r -> r.checkInlineFragment(node));
-        return scope.withChecked(rules);
     }
 
-    private Scope checkDirective(Directive node, List<Node> ancestors, Scope scope) {
-        ImmutableSet<AbstractRule> rules = scope.uncheckedRulesForNode();
+    private void checkDirective(Directive node, List<Node> ancestors, List<AbstractRule> rules) {
         rules.forEach(r -> r.checkDirective(node, ancestors));
-        return scope.withChecked(rules);
     }
 
-    private Scope checkFragmentSpread(FragmentSpread node, List<Node> ancestors, Scope scope) {
-        ImmutableSet<AbstractRule> rules = scope.uncheckedRulesForNode();
+    private void checkFragmentSpread(FragmentSpread node, List<AbstractRule> rules, List<Node> ancestors) {
         rules.forEach(r -> r.checkFragmentSpread(node));
 
-        ImmutableSet<AbstractRule> rulesVisitingFragmentSpreads = filterVisitFragmentSpreads(rules, true);
+        ImmutableList<AbstractRule> rulesVisitingFragmentSpreads = filterRulesVisitingFragmentSpreads(rules, true);
         if (rulesVisitingFragmentSpreads.size() > 0) {
             FragmentDefinition fragment = validationContext.getFragment(node.getName());
-            if (fragment != null && !ancestors.contains(fragment)) {
-                Scope newScope = scope.child(fragment)
-                    .asRoot(false)
-                    .withRulesInScope(rulesVisitingFragmentSpreads);
-                scopes.push(newScope);
+            if (fragment != null && !ancestors.contains(fragment) && !visitedFragmentSpreads.contains(node.getName())) {
+                visitedFragmentSpreads.add(node.getName());
+                rulesStack.push(rulesVisitingFragmentSpreads);
+                // JMB TODO: make this nicer
+                boolean oldSubVisitor = this.subVisitor;
+                subVisitor = true;
                 new LanguageTraversal(ancestors).traverse(fragment, this);
-                return scopes.pop();
+                this.subVisitor = oldSubVisitor;
+                rulesStack.pop();
             }
         }
-
-        return scope.withChecked(rules);
     }
 
-    private ImmutableSet<AbstractRule> filterVisitFragmentSpreads(Set<AbstractRule> rules, boolean isVisitFragmentSpreads) {
-        Iterator<AbstractRule> itr = rules.stream()
-            .filter(r -> r.isVisitFragmentSpreads() == isVisitFragmentSpreads)
-            .iterator();
-        return ImmutableSet.copyOf(itr);
-    }
-
-    private Scope checkFragmentDefinition(FragmentDefinition node, Scope scope) {
-        if (scope.root) {
-            ImmutableSet<AbstractRule> uncheckedRulesForNode = scope.uncheckedRulesForNode();
-            ImmutableSet<AbstractRule> checkRules = filterVisitFragmentSpreads(uncheckedRulesForNode, false);
-            ImmutableSet<AbstractRule> suppressRules = filterVisitFragmentSpreads(uncheckedRulesForNode, true);
-            checkRules.forEach(r -> r.checkFragmentDefinition(node));
-
-            // Suppress rules with isVisitFragmentSpreads in this subtree
-            // expect that these rules will be covered by checkFragmentSpread
-            return scope.withChecked(uncheckedRulesForNode).withSuppressed(suppressRules);
-        } else {
-            ImmutableSet<AbstractRule> rules = scope.uncheckedRulesForNode();
-            rules.forEach(r -> r.checkFragmentDefinition(node));
-            return scope.withChecked(rules);
+    private void checkFragmentDefinition(FragmentDefinition node, List<AbstractRule> rules) {
+        ImmutableList<AbstractRule> scopeRules = (ImmutableList<AbstractRule>) rules;
+        if (!subVisitor) {
+            scopeRules = filterRulesVisitingFragmentSpreads(rules, false);
+            popRulesStackOnLeave.push(node);
+            rulesStack.push(scopeRules);
         }
+
+        scopeRules.forEach(r -> r.checkFragmentDefinition(node));
     }
 
-    private Scope checkOperationDefinition(OperationDefinition node, Scope scope) {
-        ImmutableSet<AbstractRule> rules = scope.uncheckedRulesForNode();
+    private void checkOperationDefinition(OperationDefinition node, List<AbstractRule> rules) {
         rules.forEach(r -> r.checkOperationDefinition(node));
-        return scope.withChecked(rules);
     }
 
-    private Scope checkSelectionSet(SelectionSet node, Scope scope) {
-        ImmutableSet<AbstractRule> rules = scope.uncheckedRulesForNode();
+    private void checkSelectionSet(SelectionSet node, List<AbstractRule> rules) {
         rules.forEach(r -> r.checkSelectionSet(node));
-        return scope.withChecked(rules);
     }
 
-    private Scope checkVariable(VariableReference node, Scope scope) {
-        ImmutableSet<AbstractRule> rules = scope.uncheckedRulesForNode();
+    private void checkVariable(VariableReference node, List<AbstractRule> rules) {
         rules.forEach(r -> r.checkVariable(node));
-        return scope.withChecked(rules);
     }
 
     @Override
     public void leave(Node node, List<Node> ancestors) {
         validationContext.getTraversalContext().leave(node, ancestors);
-        Scope scope = scopes.pop();
+        ImmutableList<AbstractRule> rules = rulesStack.peek();
 
         if (node instanceof Document) {
-            documentFinished((Document) node, scope);
+            documentFinished((Document) node, rules);
         } else if (node instanceof OperationDefinition) {
-            leaveOperationDefinition((OperationDefinition) node, scope);
+            leaveOperationDefinition((OperationDefinition) node, rules);
         } else if (node instanceof SelectionSet) {
-            leaveSelectionSet((SelectionSet) node, scope);
+            leaveSelectionSet((SelectionSet) node, rules);
+        }
+
+        if (!popRulesStackOnLeave.isEmpty() && popRulesStackOnLeave.peek() == node) {
+            popRulesStackOnLeave.pop();
+            rulesStack.pop();
         }
     }
 
-    private void leaveSelectionSet(SelectionSet node, Scope scope) {
-        scope.rulesInScope.forEach(r -> r.leaveSelectionSet(node));
+    private void leaveSelectionSet(SelectionSet node, List<AbstractRule> rules) {
+        rules.forEach(r -> r.leaveSelectionSet(node));
     }
 
-    private void leaveOperationDefinition(OperationDefinition node, Scope scope) {
-        scope.rulesInScope.forEach(r -> r.leaveOperationDefinition(node));
+    private void leaveOperationDefinition(OperationDefinition node, List<AbstractRule> rules) {
+        rules.forEach(r -> r.leaveOperationDefinition(node));
     }
 
-    private void documentFinished(Document node, Scope scope) {
-        scope.rulesInScope.forEach(r -> r.documentFinished(node));
+    private void documentFinished(Document node, List<AbstractRule> rules) {
+        rules.forEach(r -> r.documentFinished(node));
     }
 }
