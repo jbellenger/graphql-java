@@ -49,7 +49,7 @@ public class RulesVisitor implements DocumentVisitor {
     @Override
     public void enter(Node node, List<Node> ancestors) {
         validationContext.getTraversalContext().enter(node, ancestors);
-        List<AbstractRule> rulesToConsider = rulesStack.peek();
+        ImmutableList<AbstractRule> rulesToConsider = rulesStack.peek();
 
         if (node instanceof Document){
             checkDocument((Document) node, rulesToConsider);
@@ -113,6 +113,7 @@ public class RulesVisitor implements DocumentVisitor {
         if (rulesVisitingFragmentSpreads.size() > 0) {
             FragmentDefinition fragment = validationContext.getFragment(node.getName());
             if (fragment != null && !ancestors.contains(fragment) && !visitedFragmentSpreads.contains(node.getName())) {
+                // Manually traverse into the FragmentDefinition
                 visitedFragmentSpreads.add(node.getName());
                 rulesStack.push(rulesVisitingFragmentSpreads);
                 fragmentSpreadVisitDepth++;
@@ -123,8 +124,12 @@ public class RulesVisitor implements DocumentVisitor {
         }
     }
 
-    private void checkFragmentDefinition(FragmentDefinition node, List<AbstractRule> rules) {
-        ImmutableList<AbstractRule> scopeRules = (ImmutableList<AbstractRule>) rules;
+    private void checkFragmentDefinition(FragmentDefinition node, ImmutableList<AbstractRule> rules) {
+        ImmutableList<AbstractRule> scopeRules = rules;
+
+        // If we've encountered a FragmentDefinition and we got here without coming through a
+        // FragmentSpread, then suspend all isVisitFragmentSpread rules for this subtree.
+        // Expect these rules to be checked when when the FragmentSpread is traversed
         if (fragmentSpreadVisitDepth == 0) {
             scopeRules = filterRulesVisitingFragmentSpreads(rules, false);
             popRulesStackOnLeave.push(node);
