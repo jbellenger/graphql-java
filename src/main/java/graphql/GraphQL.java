@@ -309,7 +309,7 @@ public class GraphQL {
      * @return an {@link ExecutionResult} which can include errors
      */
     public ExecutionResult execute(String query) {
-        ExecutionInput executionInput = ExecutionInput.newExecutionInput()
+        ExecutionInput executionInput = ExecutionInputImpl.newExecutionInput()
                 .query(query)
                 .build();
         return execute(executionInput);
@@ -325,7 +325,7 @@ public class GraphQL {
      */
     @Deprecated
     public ExecutionResult execute(String query, Object context) {
-        ExecutionInput executionInput = ExecutionInput.newExecutionInput()
+        ExecutionInput executionInput = ExecutionInputImpl.newExecutionInput()
                 .query(query)
                 .context(context)
                 .root(context) // This we are doing do be backwards compatible
@@ -344,7 +344,7 @@ public class GraphQL {
      */
     @Deprecated
     public ExecutionResult execute(String query, String operationName, Object context) {
-        ExecutionInput executionInput = ExecutionInput.newExecutionInput()
+        ExecutionInput executionInput = ExecutionInputImpl.newExecutionInput()
                 .query(query)
                 .operationName(operationName)
                 .context(context)
@@ -364,7 +364,7 @@ public class GraphQL {
      */
     @Deprecated
     public ExecutionResult execute(String query, Object context, Map<String, Object> variables) {
-        ExecutionInput executionInput = ExecutionInput.newExecutionInput()
+        ExecutionInput executionInput = ExecutionInputImpl.newExecutionInput()
                 .query(query)
                 .context(context)
                 .root(context) // This we are doing do be backwards compatible
@@ -385,7 +385,7 @@ public class GraphQL {
      */
     @Deprecated
     public ExecutionResult execute(String query, String operationName, Object context, Map<String, Object> variables) {
-        ExecutionInput executionInput = ExecutionInput.newExecutionInput()
+        ExecutionInput executionInput = ExecutionInputImpl.newExecutionInput()
                 .query(query)
                 .operationName(operationName)
                 .context(context)
@@ -398,10 +398,10 @@ public class GraphQL {
     /**
      * Executes the graphql query using the provided input object builder
      *
-     * @param executionInputBuilder {@link ExecutionInput.Builder}
+     * @param executionInputBuilder {@link ExecutionInputImpl.Builder}
      * @return an {@link ExecutionResult} which can include errors
      */
-    public ExecutionResult execute(ExecutionInput.Builder executionInputBuilder) {
+    public ExecutionResult execute(ExecutionInputImpl.Builder executionInputBuilder) {
         return execute(executionInputBuilder.build());
     }
 
@@ -415,11 +415,11 @@ public class GraphQL {
      * }
      * </pre>
      *
-     * @param builderFunction a function that is given a {@link ExecutionInput.Builder}
+     * @param builderFunction a function that is given a {@link ExecutionInputImpl.Builder}
      * @return an {@link ExecutionResult} which can include errors
      */
-    public ExecutionResult execute(UnaryOperator<ExecutionInput.Builder> builderFunction) {
-        return execute(builderFunction.apply(ExecutionInput.newExecutionInput()).build());
+    public ExecutionResult execute(UnaryOperator<ExecutionInputImpl.Builder> builderFunction) {
+        return execute(builderFunction.apply(ExecutionInputImpl.newExecutionInput()).build());
     }
 
     /**
@@ -446,10 +446,10 @@ public class GraphQL {
      * This will return a promise (aka {@link CompletableFuture}) to provide a {@link ExecutionResult}
      * which is the result of executing the provided query.
      *
-     * @param executionInputBuilder {@link ExecutionInput.Builder}
+     * @param executionInputBuilder {@link ExecutionInputImpl.Builder}
      * @return a promise to an {@link ExecutionResult} which can include errors
      */
-    public CompletableFuture<ExecutionResult> executeAsync(ExecutionInput.Builder executionInputBuilder) {
+    public CompletableFuture<ExecutionResult> executeAsync(ExecutionInputImpl.Builder executionInputBuilder) {
         return executeAsync(executionInputBuilder.build());
     }
 
@@ -466,11 +466,11 @@ public class GraphQL {
      * }
      * </pre>
      *
-     * @param builderFunction a function that is given a {@link ExecutionInput.Builder}
+     * @param builderFunction a function that is given a {@link ExecutionInputImpl.Builder}
      * @return a promise to an {@link ExecutionResult} which can include errors
      */
-    public CompletableFuture<ExecutionResult> executeAsync(UnaryOperator<ExecutionInput.Builder> builderFunction) {
-        return executeAsync(builderFunction.apply(ExecutionInput.newExecutionInput()).build());
+    public CompletableFuture<ExecutionResult> executeAsync(UnaryOperator<ExecutionInputImpl.Builder> builderFunction) {
+        return executeAsync(builderFunction.apply(ExecutionInputImpl.newExecutionInput()).build());
     }
 
     /**
@@ -521,7 +521,6 @@ public class GraphQL {
         Object context = executionInput.getGraphQLContext();
         return executionInput.transform(builder -> builder.executionId(idProvider.provide(queryString, operationName, context)));
     }
-
 
     private CompletableFuture<ExecutionResult> parseValidateAndExecute(ExecutionInput executionInput, GraphQLSchema graphQLSchema, InstrumentationState instrumentationState) {
         AtomicReference<ExecutionInput> executionInputRef = new AtomicReference<>(executionInput);

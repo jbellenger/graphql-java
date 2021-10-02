@@ -29,6 +29,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 import static graphql.StarWarsSchema.queryType;
+import static graphql.ExecutionInputImpl.newExecutionInput;
 
 @SuppressWarnings({"unused", "UnnecessaryLocalVariable", "Convert2Lambda", "unused", "ClassCanBeStatic", "TypeParameterUnusedInFormals"})
 public class ExecutionExamples {
@@ -46,7 +47,7 @@ public class ExecutionExamples {
         GraphQL graphQL = GraphQL.newGraphQL(schema)
                 .build();
 
-        ExecutionInput executionInput = ExecutionInput.newExecutionInput().query("query { hero { name } }")
+        ExecutionInput executionInput = newExecutionInput().query("query { hero { name } }")
                 .build();
 
         ExecutionResult executionResult = graphQL.execute(executionInput);
@@ -61,7 +62,7 @@ public class ExecutionExamples {
         //::FigureB
         GraphQL graphQL = buildSchema();
 
-        ExecutionInput executionInput = ExecutionInput.newExecutionInput().query("query { hero { name } }")
+        ExecutionInput executionInput = newExecutionInput().query("query { hero { name } }")
                 .build();
 
         CompletableFuture<ExecutionResult> promise = graphQL.executeAsync(executionInput);
@@ -76,7 +77,7 @@ public class ExecutionExamples {
     }
 
     private GraphQL graphQL = buildSchema();
-    private ExecutionInput executionInput = ExecutionInput.newExecutionInput().query("query { hero { name } }")
+    private ExecutionInput executionInput = newExecutionInput().query("query { hero { name } }")
             .build();
 
     private void equivalentSerialAndAsyncQueryExecution() throws Exception {

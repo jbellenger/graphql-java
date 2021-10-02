@@ -1,6 +1,7 @@
 package readme;
 
 import graphql.ExecutionInput;
+import graphql.ExecutionInputImpl;
 import graphql.ExecutionResult;
 import graphql.GraphQL;
 import graphql.GraphQLContext;
@@ -59,7 +60,7 @@ public class ConcernsExamples {
         //
         UserContext contextForUser = YourGraphqlContextBuilder.getContextForUser(getCurrentUser());
 
-        ExecutionInput executionInput = ExecutionInput.newExecutionInput()
+        ExecutionInput executionInput = ExecutionInputImpl.newExecutionInput()
                 .graphQLContext(context -> context.put("userContext", contextForUser))
                 .build();
 

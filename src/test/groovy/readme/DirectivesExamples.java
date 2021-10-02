@@ -22,6 +22,8 @@ import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.Map;
 
+import static graphql.ExecutionInputImpl.newExecutionInput;
+
 @SuppressWarnings({"Convert2Lambda", "unused", "ClassCanBeStatic"})
 public class DirectivesExamples {
 
@@ -81,7 +83,7 @@ public class DirectivesExamples {
 
         AuthorisationCtx authCtx = AuthorisationCtx.obtain();
 
-        ExecutionInput executionInput = ExecutionInput.newExecutionInput()
+        ExecutionInput executionInput = newExecutionInput()
                 .query(query)
                 .graphQLContext(builder -> builder.put("authCtx", authCtx))
                 .build();
@@ -160,7 +162,7 @@ public class DirectivesExamples {
                 "    usa : dateField(format : \"MM-dd-YYYY\") \n" +
                 "}";
 
-        ExecutionInput executionInput = ExecutionInput.newExecutionInput()
+        ExecutionInput executionInput = newExecutionInput()
                 .root(root)
                 .query(query)
                 .build();
