@@ -1,7 +1,6 @@
 package graphql.nextgen;
 
 import graphql.ExecutionInput;
-import graphql.ExecutionInputImpl;
 import graphql.ExecutionResult;
 import graphql.ExecutionResultImpl;
 import graphql.Internal;
@@ -89,7 +88,7 @@ public class GraphQL {
      * @return a promise to an {@link ExecutionResult} which can include errors
      */
     public CompletableFuture<ExecutionResult> execute(UnaryOperator<ExecutionInput.Builder> builderFunction) {
-        return executeAsync(builderFunction.apply(ExecutionInputImpl.newExecutionInput()).build());
+        return executeAsync(builderFunction.apply(ExecutionInput.newExecutionInput()).build());
     }
 
     /**
@@ -135,7 +134,7 @@ public class GraphQL {
      * @return a promise to an {@link ExecutionResult} which can include errors
      */
     public CompletableFuture<ExecutionResult> executeAsync(UnaryOperator<ExecutionInput.Builder> builderFunction) {
-        return executeAsync(builderFunction.apply(ExecutionInputImpl.newExecutionInput()).build());
+        return executeAsync(builderFunction.apply(ExecutionInput.newExecutionInput()).build());
     }
 
     /**
