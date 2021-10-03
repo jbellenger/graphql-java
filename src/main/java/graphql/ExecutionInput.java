@@ -40,6 +40,21 @@ public interface ExecutionInput {
 
   ExecutionInput transform(Consumer<Builder> builderConsumer);
 
+  static Builder newExecutionInput() {
+    return ExecutionInputImpl.newExecutionInput();
+  }
+
+  /**
+   * Creates a new builder of ExecutionInput objects with the given query
+   *
+   * @param query the query to execute
+   *
+   * @return a new builder of ExecutionInput objects
+   */
+  static Builder newExecutionInput(String query) {
+    return newExecutionInput().query(query);
+  }
+
   interface Builder {
     Builder query(String query);
 
@@ -134,7 +149,7 @@ public interface ExecutionInput {
      */
     Builder dataLoaderRegistry(DataLoaderRegistry dataLoaderRegistry);
 
-    public Builder cacheControl(CacheControl cacheControl);
+    Builder cacheControl(CacheControl cacheControl);
 
     ExecutionInput build();
   }

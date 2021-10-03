@@ -23,7 +23,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
-import static graphql.ExecutionInputImpl.newExecutionInput;
+import static graphql.ExecutionInput.newExecutionInput;
 
 @SuppressWarnings({"unused", "Convert2Lambda", "ClassCanBeStatic"})
 public class DataLoaderBatchingExamples {

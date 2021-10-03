@@ -200,17 +200,6 @@ public class ExecutionInputImpl implements ExecutionInput {
         return new BuilderImpl();
     }
 
-    /**
-     * Creates a new builder of ExecutionInput objects with the given query
-     *
-     * @param query the query to execute
-     *
-     * @return a new builder of ExecutionInput objects
-     */
-    public static ExecutionInput.Builder newExecutionInput(String query) {
-        return new BuilderImpl().query(query);
-    }
-
     private static class BuilderImpl implements ExecutionInput.Builder {
 
         private String query;

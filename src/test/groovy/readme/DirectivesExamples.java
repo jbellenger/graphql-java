@@ -22,7 +22,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.Map;
 
-import static graphql.ExecutionInputImpl.newExecutionInput;
+import static graphql.ExecutionInput.newExecutionInput;
 
 @SuppressWarnings({"Convert2Lambda", "unused", "ClassCanBeStatic"})
 public class DirectivesExamples {

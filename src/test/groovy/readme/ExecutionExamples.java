@@ -29,7 +29,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 import static graphql.StarWarsSchema.queryType;
-import static graphql.ExecutionInputImpl.newExecutionInput;
+import static graphql.ExecutionInput.newExecutionInput;
 
 @SuppressWarnings({"unused", "UnnecessaryLocalVariable", "Convert2Lambda", "unused", "ClassCanBeStatic", "TypeParameterUnusedInFormals"})
 public class ExecutionExamples {
