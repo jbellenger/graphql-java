@@ -17,7 +17,8 @@ export class PerfCdkStack extends cdk.Stack {
         )
         role.addToPolicy(new PolicyStatement({
             effect: Effect.ALLOW,
-            actions: ["s3:PutObject",
+            actions: [
+                "s3:PutObject",
                 "s3:GetObject",
                 "s3:ListBucket"
             ],

@@ -53,6 +53,7 @@ jobs:
           source: "build/libs/graphql-java-jmh.jar"
           target: "~"
           strip_components: 2
+          debug: true
       - name: Run JMH
         uses: appleboy/ssh-action@master
         with:
