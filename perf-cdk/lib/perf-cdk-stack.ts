@@ -6,7 +6,10 @@ import {Effect, PolicyStatement} from '@aws-cdk/aws-iam';
 export class PerfCdkStack extends cdk.Stack {
     constructor(scope: cdk.Construct, id: string, props?: cdk.StackProps) {
         super(scope, id, props);
-        const defaultVpc = ec2.Vpc.fromLookup(this, 'VPC', {isDefault: true})
+        // JMB TODO: I don't have a default VPC in my aws account. Hard-coding
+        // to my borg VPC but this should probably get something from the env
+        // const defaultVpc = ec2.Vpc.fromLookup(this, 'VPC', {isDefault: true})
+        const defaultVpc = ec2.Vpc.fromLookup(this, 'VPC', {vpcId: 'vpc-328c2255'})
         const role = new iam.Role(
             this,
             'GJPerfTestEC2',
@@ -68,7 +71,7 @@ export class PerfCdkStack extends cdk.Stack {
                 generation: ec2.AmazonLinuxGeneration.AMAZON_LINUX_2,
             }),
 
-            keyName: 'simple-instance-1-key',
+            keyName: 'graphql-java-integration',
         })
         new cdk.CfnOutput(this, 'simple-instance-1-output', {
             value: instance.instancePublicIp
