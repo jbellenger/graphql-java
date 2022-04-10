@@ -29,22 +29,22 @@ import java.util.concurrent.TimeUnit;
  * <p>
  * Install it and then just hit "Run" on a certain benchmark method
  */
-//@Warmup(iterations = 2, time = 5, batchSize = 3)
-//@Measurement(iterations = 3, time = 10, batchSize = 4)
+@Warmup(iterations = 2, time = 5, batchSize = 3)
+@Measurement(iterations = 3, time = 10, batchSize = 4)
 public class SchemaBenchMark {
 
     static String largeSDL = createResourceSDL("large-schema-3.graphqls");
 
-//    @Benchmark
-//    @BenchmarkMode(Mode.Throughput)
-//    @OutputTimeUnit(TimeUnit.MINUTES)
+    @Benchmark
+    @BenchmarkMode(Mode.Throughput)
+    @OutputTimeUnit(TimeUnit.MINUTES)
     public void benchMarkLargeSchemaCreate(Blackhole blackhole) throws InterruptedException {
         blackhole.consume(createSchema(largeSDL));
     }
 
-//    @Benchmark
-//    @BenchmarkMode(Mode.AverageTime)
-//    @OutputTimeUnit(TimeUnit.MILLISECONDS)
+    @Benchmark
+    @BenchmarkMode(Mode.AverageTime)
+    @OutputTimeUnit(TimeUnit.MILLISECONDS)
     public void benchMarkLargeSchemaCreateAvgTime(Blackhole blackhole) throws InterruptedException {
         blackhole.consume(createSchema(largeSDL));
     }

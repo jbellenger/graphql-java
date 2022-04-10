@@ -28,8 +28,8 @@ import static benchmark.BenchmarkUtils.asRTE;
  * <p>
  * Install it and then just hit "Run" on a certain benchmark method
  */
-//@Warmup(iterations = 2, time = 5, batchSize = 3)
-//@Measurement(iterations = 3, time = 10, batchSize = 4)
+@Warmup(iterations = 2, time = 5, batchSize = 3)
+@Measurement(iterations = 3, time = 10, batchSize = 4)
 public class TypeDefinitionParserVersusSerializeBenchMark {
 
     static SchemaParser schemaParser = new SchemaParser();
@@ -37,16 +37,16 @@ public class TypeDefinitionParserVersusSerializeBenchMark {
     static TypeDefinitionRegistry registryOut = schemaParser.parse(SDL);
     static ByteArrayOutputStream baOS = serialisedRegistryStream(registryOut);
 
-//    @Benchmark
-//    @BenchmarkMode(Mode.Throughput)
-//    @OutputTimeUnit(TimeUnit.SECONDS)
+    @Benchmark
+    @BenchmarkMode(Mode.Throughput)
+    @OutputTimeUnit(TimeUnit.SECONDS)
     public void benchMarkParsing(Blackhole blackhole) throws InterruptedException {
         blackhole.consume(schemaParser.parse(SDL));
     }
 
-//    @Benchmark
-//    @BenchmarkMode(Mode.Throughput)
-//    @OutputTimeUnit(TimeUnit.SECONDS)
+    @Benchmark
+    @BenchmarkMode(Mode.Throughput)
+    @OutputTimeUnit(TimeUnit.SECONDS)
     public void benchMarkSerializing(Blackhole blackhole) throws InterruptedException {
         blackhole.consume(serialise());
     }

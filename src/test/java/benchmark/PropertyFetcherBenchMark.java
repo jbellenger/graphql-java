@@ -23,20 +23,20 @@ import java.util.concurrent.TimeUnit;
  * <p>
  * Install it and then just hit "Run" on a certain benchmark method
  */
-//@Warmup(iterations = 2, time = 5, batchSize = 3)
-//@Measurement(iterations = 3, time = 10, batchSize = 4)
+@Warmup(iterations = 2, time = 5, batchSize = 3)
+@Measurement(iterations = 3, time = 10, batchSize = 4)
 public class PropertyFetcherBenchMark {
 
-//    @Benchmark
-//    @BenchmarkMode(Mode.Throughput)
-//    @OutputTimeUnit(TimeUnit.SECONDS)
+    @Benchmark
+    @BenchmarkMode(Mode.Throughput)
+    @OutputTimeUnit(TimeUnit.SECONDS)
     public void benchMarkThroughputInDirectClassHierarchy(Blackhole blackhole) throws InterruptedException {
         executeTest(blackhole, dfeFoo);
     }
 
-//    @Benchmark
-//    @BenchmarkMode(Mode.Throughput)
-//    @OutputTimeUnit(TimeUnit.SECONDS)
+    @Benchmark
+    @BenchmarkMode(Mode.Throughput)
+    @OutputTimeUnit(TimeUnit.SECONDS)
     public void benchMarkThroughputDirectClassHierarchy(Blackhole blackhole) throws InterruptedException {
         executeTest(blackhole, dfeBar);
     }
