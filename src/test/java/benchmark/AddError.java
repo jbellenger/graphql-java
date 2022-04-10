@@ -24,10 +24,10 @@ public class AddError {
 
     private volatile int x = 0;
 
-    @Benchmark
-    @BenchmarkMode(Mode.SingleShotTime)
-    @Warmup(iterations = 1, batchSize = 50000)
-    @Measurement(iterations = 1, batchSize = 5000)
+//    @Benchmark
+//    @BenchmarkMode(Mode.SingleShotTime)
+//    @Warmup(iterations = 1, batchSize = 50000)
+//    @Measurement(iterations = 1, batchSize = 5000)
     public ExecutionContext benchMarkAddError() throws InterruptedException {
         context.addError(
                 new SchemaMissingError(),

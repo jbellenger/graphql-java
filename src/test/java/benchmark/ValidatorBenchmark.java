@@ -32,13 +32,13 @@ import static com.google.common.io.Resources.getResource;
 import static graphql.Assert.assertTrue;
 
 
-@State(Scope.Benchmark)
-@BenchmarkMode(Mode.AverageTime)
-@Threads(1)
-@Warmup(iterations = 5, time = 5)
-@Measurement(iterations = 10, time = 10)
-@Fork(1)
-@OutputTimeUnit(TimeUnit.MILLISECONDS)
+//@State(Scope.Benchmark)
+//@BenchmarkMode(Mode.AverageTime)
+//@Threads(1)
+//@Warmup(iterations = 5, time = 5)
+//@Measurement(iterations = 10, time = 10)
+//@Fork(1)
+//@OutputTimeUnit(TimeUnit.MILLISECONDS)
 public class ValidatorBenchmark {
 
     @State(Scope.Benchmark)
@@ -70,7 +70,7 @@ public class ValidatorBenchmark {
         }
     }
 
-    @Benchmark
+//    @Benchmark
     public void runValidator(MyState state) throws InterruptedException {
         Validator validator = new Validator();
         validator.validateDocument(state.schema, state.document);

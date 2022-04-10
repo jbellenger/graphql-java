@@ -23,8 +23,8 @@ export class PerfCdkStack extends cdk.Stack {
                 "s3:ListBucket"
             ],
             resources: [
-                "arn:aws:s3:::graphql-java-perf-tests",
-                "arn:aws:s3:::graphql-java-perf-tests/*"]
+                "arn:aws:s3:::borg.graphql-java-perf-tests",
+                "arn:aws:s3:::borg.graphql-java-perf-tests/*"]
         }));
 
         // lets create a security group for our instance
@@ -71,7 +71,6 @@ export class PerfCdkStack extends cdk.Stack {
             machineImage: ec2.MachineImage.latestAmazonLinux({
                 generation: ec2.AmazonLinuxGeneration.AMAZON_LINUX_2,
             }),
-
             keyName: 'graphql-java-integration',
         })
         new cdk.CfnOutput(this, 'simple-instance-1-output', {

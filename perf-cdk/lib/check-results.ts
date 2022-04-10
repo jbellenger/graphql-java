@@ -11,7 +11,7 @@ import {exec, ExecException} from "child_process";
 import ReadableStream = NodeJS.ReadableStream;
 
 const REGION = "us-west-2";
-const BUCKET_NAME = "graphql-java-perf-tests"
+const BUCKET_NAME = "borg.graphql-java-perf-tests"
 
 const s3Client = new S3Client({region: REGION});
 
