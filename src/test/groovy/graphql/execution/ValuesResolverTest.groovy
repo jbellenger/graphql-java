@@ -1,5 +1,7 @@
 package graphql.execution
 
+import graphql.ErrorType
+import graphql.ExecutionInput
 import graphql.GraphQLException
 import graphql.TestUtil
 import graphql.language.Argument
@@ -12,13 +14,13 @@ import graphql.language.NonNullType
 import graphql.language.NullValue
 import graphql.language.ObjectField
 import graphql.language.ObjectValue
+import graphql.language.SourceLocation
 import graphql.language.StringValue
 import graphql.language.TypeName
 import graphql.language.Value
 import graphql.language.VariableDefinition
 import graphql.language.VariableReference
 import graphql.schema.CoercingParseValueException
-import graphql.schema.GraphQLArgument
 import spock.lang.Specification
 import spock.lang.Unroll
 
@@ -116,8 +118,7 @@ class ValuesResolverTest extends Specification {
         def obj = new Person('a', 123)
         resolver.coerceVariableValues(schema, [variableDefinition], [variable: obj])
         then:
-        def e = thrown(CoercingParseValueException)
-//        e.path == ["variable"]
+        thrown(CoercingParseValueException)
     }
 
     def "getVariableValues: simple value gets resolved to a list when the type is a List"() {
@@ -129,6 +130,30 @@ class ValuesResolverTest extends Specification {
         def resolvedValues = resolver.coerceVariableValues(schema, [variableDefinition], [variable: value])
         then:
         resolvedValues['variable'] == ['world']
+
+    }
+
+    def "getVariableValues: list value gets resolved to a list when the type is a List"() {
+        given:
+        def schema = TestUtil.schemaWithInputType(list(GraphQLString))
+        VariableDefinition variableDefinition = new VariableDefinition("variable", new ListType(new TypeName("String")))
+        List<String> value = ["hello","world"]
+        when:
+        def resolvedValues = resolver.coerceVariableValues(schema, [variableDefinition], [variable: value])
+        then:
+        resolvedValues['variable'] == ['hello','world']
+
+    }
+
+    def "getVariableValues: array value gets resolved to a list when the type is a List"() {
+        given:
+        def schema = TestUtil.schemaWithInputType(list(GraphQLString))
+        VariableDefinition variableDefinition = new VariableDefinition("variable", new ListType(new TypeName("String")))
+        String[] value = ["hello","world"] as String[]
+        when:
+        def resolvedValues = resolver.coerceVariableValues(schema, [variableDefinition], [variable: value])
+        then:
+        resolvedValues['variable'] == ['hello','world']
 
     }
 
@@ -157,7 +182,7 @@ class ValuesResolverTest extends Specification {
 
         when:
         def variables = [:]
-        def values = resolver.getArgumentValues([fieldArgument], [argument], variables)
+        def values = resolver.getArgumentValues([fieldArgument], [argument], variables as Map<String, Object>)
 
         then:
         values['arg'] == 'hello'
@@ -395,8 +420,7 @@ class ValuesResolverTest extends Specification {
         resolver.coerceVariableValues(schema, [variableDefinition], [variable: inputValue])
 
         then:
-        def e = thrown(GraphQLException)
-//        e.path == ["variable", "requiredField"]
+        thrown(GraphQLException)
 
         where:
         inputValue                        | _
@@ -456,7 +480,7 @@ class ValuesResolverTest extends Specification {
         resolvedVars['bar'] == "barValue"
     }
 
-    def "coerceVariableValues: if variableType is a Non‐Nullable type and value is null, throw a query error"() {
+    def "coerceVariableValues: if variableType is a Non-Nullable type and value is null, throw a query error"() {
         given:
         def schema = TestUtil.schemaWithInputType(nonNull(GraphQLString))
 
@@ -471,7 +495,25 @@ class ValuesResolverTest extends Specification {
 
         then:
         def error = thrown(NonNullableValueCoercedAsNullException)
-        error.message == "Variable 'foo' has coerced Null value for NonNull type 'String!'"
+        error.message == "Variable 'foo' has an invalid value: Variable 'foo' has coerced Null value for NonNull type 'String!'"
+    }
+
+    def "coerceVariableValues: if variableType is a list of Non-Nullable type, and element value is null, throw a query error"() {
+        given:
+        def schema = TestUtil.schemaWithInputType(list(nonNull(GraphQLString)))
+
+        def defaultValueForFoo = new ArrayValue([new StringValue("defaultValueForFoo")])
+        def type = new ListType(new NonNullType(new TypeName("String")))
+        VariableDefinition fooVarDef = new VariableDefinition("foo", type, defaultValueForFoo)
+
+        def variableValuesMap = ["foo": [null]]
+
+        when:
+        resolver.coerceVariableValues(schema, [fooVarDef], variableValuesMap)
+
+        then:
+        def error = thrown(NonNullableValueCoercedAsNullException)
+        error.message == "Variable 'foo' has an invalid value: Coerced Null value for NonNull type 'String!'"
     }
 
     // Note: use NullValue defined in Field when it exists,
@@ -482,12 +524,12 @@ class ValuesResolverTest extends Specification {
                 .name("inputObject")
                 .build()
 
-        def fieldArgument = GraphQLArgument.newArgument().name("arg").type(inputObjectType).defaultValue("hello").build()
+        def fieldArgument = newArgument().name("arg").type(inputObjectType).defaultValue("hello").build()
         def argument = new Argument("arg", NullValue.newNullValue().build())
 
         when:
         def variables = [:]
-        def values = resolver.getArgumentValues([fieldArgument], [argument], variables)
+        def values = resolver.getArgumentValues([fieldArgument], [argument], variables as Map<String, Object>)
 
         then:
         values['arg'] == null
@@ -508,5 +550,142 @@ class ValuesResolverTest extends Specification {
 
         then:
         values['arg'] == null
+    }
+
+    def "argument of Non-Nullable type and with null coerced value throws error"() {
+        given:
+        def inputObjectType = newInputObject()
+                .name("inputObject")
+                .build()
+
+        def fieldArgument = newArgument().name("arg").type(nonNull(inputObjectType)).build()
+        def argument = new Argument("arg", new VariableReference("var"))
+
+        when:
+        def variables = ["var": null]
+        resolver.getArgumentValues([fieldArgument], [argument], variables)
+
+        then:
+        def error = thrown(NonNullableValueCoercedAsNullException)
+        error.message == "Argument 'arg' has coerced Null value for NonNull type 'inputObject!'"
+    }
+
+    def "invalid enum error message is not nested and contains source location - issue 2560"() {
+        when:
+        def graphQL = TestUtil.graphQL('''
+            enum PositionType {
+                MANAGER
+                DEVELOPER
+            }
+            
+            input PersonInput {
+                name: String
+                position: PositionType
+            }
+
+            type Query {
+                name: String
+            }
+            
+            type Mutation {
+              updatePerson(input: PersonInput!): Boolean
+            }
+        ''').build()
+
+        def mutation = '''
+            mutation UpdatePerson($input: PersonInput!) {
+                updatePerson(input: $input)
+            }
+        '''
+
+        def executionInput = ExecutionInput.newExecutionInput()
+                .query(mutation)
+                .variables([input: [name: 'Name', position: 'UNKNOWN_POSITION'] ])
+                .build()
+
+        def executionResult = graphQL.execute(executionInput)
+
+        then:
+        executionResult.data == null
+        executionResult.errors.size() == 1
+        executionResult.errors[0].errorType == ErrorType.ValidationError
+        executionResult.errors[0].message == 'Variable \'input\' has an invalid value: Invalid input for Enum \'PositionType\'. No value found for name \'UNKNOWN_POSITION\''
+        executionResult.errors[0].locations == [new SourceLocation(2, 35)]
+    }
+
+    def "invalid boolean coercing parse value error message is not nested and contains source location - issue 2560"() {
+        when:
+        def graphQL = TestUtil.graphQL('''
+            input PersonInput {
+                name: String
+                hilarious: Boolean
+            }
+
+            type Query {
+                name: String
+            }
+            
+            type Mutation {
+              updatePerson(input: PersonInput!): Boolean
+            }
+        ''').build()
+
+        def mutation = '''
+            mutation UpdatePerson($input: PersonInput!) {
+                updatePerson(input: $input)
+            }
+        '''
+
+        def executionInput = ExecutionInput.newExecutionInput()
+                .query(mutation)
+                .variables([input: [name: 'Name', hilarious: 'sometimes'] ])
+                .build()
+
+        def executionResult = graphQL.execute(executionInput)
+
+        then:
+        executionResult.data == null
+        executionResult.errors.size() == 1
+        executionResult.errors[0].errorType == ErrorType.ValidationError
+        executionResult.errors[0].message == 'Variable \'input\' has an invalid value: Expected type \'Boolean\' but was \'String\'.'
+        executionResult.errors[0].locations == [new SourceLocation(2, 35)]
+    }
+
+    def "invalid float coercing parse value error message is not nested and contains source location - issue 2560"() {
+        when:
+        def graphQL = TestUtil.graphQL('''
+            input PersonInput {
+                name: String
+                laughsPerMinute: Float
+            }
+
+            type Query {
+                name: String
+            }
+            
+            type Mutation {
+              updatePerson(input: PersonInput!): Boolean
+            }
+        ''').build()
+
+        def mutation = '''
+            mutation UpdatePerson($input: PersonInput!) {
+                updatePerson(input: $input)
+            }
+        '''
+
+        def executionInput = ExecutionInput.newExecutionInput()
+                .query(mutation)
+                .variables([input: [name: 'Name', laughsPerMinute: 'none'] ])
+                .build()
+
+        def executionResult = graphQL.execute(executionInput)
+
+        then:
+        executionResult.data == null
+        executionResult.errors.size() == 1
+        executionResult.errors[0].errorType == ErrorType.ValidationError
+        executionResult.errors[0].message == 'Variable \'input\' has an invalid value: Expected type \'Float\' but was \'String\'.'
+        executionResult.errors[0].locations == [new SourceLocation(2, 35)]
     }
 }

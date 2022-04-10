@@ -17,6 +17,7 @@ import java.util.function.Consumer;
 
 import static graphql.Assert.assertNotNull;
 import static graphql.Assert.assertValidName;
+import static graphql.execution.ValuesResolver.getInputValueImpl;
 
 /**
  * This defines an argument that can be supplied to a graphql field (via {@link graphql.schema.GraphQLFieldDefinition}.
@@ -33,9 +34,14 @@ import static graphql.Assert.assertValidName;
  * object but rather in the AST direct or in the query variables map and the 'defaultValue' represents a value to use if both of these are
  * not present. You can think of them like a descriptor of what shape an argument might have.
  * <p>
- * However with directives on SDL elements, the value is specified in AST only and transferred into the GraphQLArgument object and the
+ * However, with directives on SDL elements, the value is specified in AST only and transferred into the GraphQLArgument object and the
  * 'defaultValue' comes instead from the directive definition elsewhere in the SDL.  You can think of them as 'instances' of arguments, their shape and their
  * specific value on that directive.
+ * <p>
+ * Originally graphql-java re-used the {@link GraphQLDirective} and {@link GraphQLArgument}
+ * classes to do both purposes.  This was a modelling mistake.  New {@link GraphQLAppliedDirective} and {@link GraphQLAppliedDirectiveArgument}
+ * classes have been introduced to better model when a directive is applied to a schema element,
+ * as opposed to its schema definition itself.
  */
 @PublicApi
 public class GraphQLArgument implements GraphQLNamedSchemaElement, GraphQLInputValueDefinition {
@@ -44,16 +50,15 @@ public class GraphQLArgument implements GraphQLNamedSchemaElement, GraphQLInputV
     private final String description;
     private final String deprecationReason;
     private final GraphQLInputType originalType;
+    private GraphQLInputType replacedType;
 
     private final InputValueWithState defaultValue;
     private final InputValueWithState value;
 
     private final InputValueDefinition definition;
-    private final DirectivesUtil.DirectivesHolder directives;
+    private final DirectivesUtil.DirectivesHolder directivesHolder;
 
-    private GraphQLInputType replacedType;
 
-    public static final String CHILD_DIRECTIVES = "directives";
     public static final String CHILD_TYPE = "type";
 
 
@@ -64,6 +69,7 @@ public class GraphQLArgument implements GraphQLNamedSchemaElement, GraphQLInputV
                             InputValueWithState value,
                             InputValueDefinition definition,
                             List<GraphQLDirective> directives,
+                            List<GraphQLAppliedDirective> appliedDirectives,
                             String deprecationReason) {
         assertValidName(name);
         assertNotNull(type, () -> "type can't be null");
@@ -74,7 +80,7 @@ public class GraphQLArgument implements GraphQLNamedSchemaElement, GraphQLInputV
         this.value = value;
         this.definition = definition;
         this.deprecationReason = deprecationReason;
-        this.directives = new DirectivesUtil.DirectivesHolder(directives);
+        this.directivesHolder = new DirectivesUtil.DirectivesHolder(directives, appliedDirectives);
     }
 
 
@@ -94,7 +100,7 @@ public class GraphQLArgument implements GraphQLNamedSchemaElement, GraphQLInputV
     /**
      * The default value of this argument.
      *
-     * @return
+     * @return a {@link InputValueWithState} that represents the arguments default value
      */
     public @NotNull InputValueWithState getArgumentDefaultValue() {
         return defaultValue;
@@ -110,12 +116,59 @@ public class GraphQLArgument implements GraphQLNamedSchemaElement, GraphQLInputV
 
 
     /**
-     * This is only used for applied directives.
+     * This is only used for applied directives, that is when this argument is on a {@link GraphQLDirective} applied to a schema or query element
+     *
+     * @return an input value with state for an applied directive
+     *
+     * @deprecated use {@link GraphQLAppliedDirectiveArgument} instead
      */
+    @Deprecated
     public @NotNull InputValueWithState getArgumentValue() {
         return value;
     }
 
+    /**
+     * This static helper method will give out a java value based on the semantics captured
+     * in the {@link InputValueWithState} from {@link GraphQLArgument#getArgumentValue()}
+     *
+     * Note : You MUST only call this on a {@link GraphQLArgument} that is part of a fully formed schema.  We need
+     * all of the types to be resolved in order for this work correctly.
+     *
+     * Note: This method will return null if the value is not set or explicitly set to null.  If you you to know the difference
+     * when "not set" and "set to null" then you cant use this method.  Rather you should use {@link GraphQLArgument#getArgumentValue()}
+     * and use the {@link InputValueWithState#isNotSet()} methods to decide how to handle those values.
+     *
+     * @param argument the fully formed {@link GraphQLArgument}
+     * @param <T>      the type you want it cast as
+     *
+     * @return a value of type T which is the java value of the argument
+     *
+     * @deprecated use {@link GraphQLAppliedDirectiveArgument} instead
+     */
+    @Deprecated
+    public static <T> T getArgumentValue(GraphQLArgument argument) {
+        return getInputValueImpl(argument.getType(), argument.getArgumentValue());
+    }
+
+    /**
+     * This static helper method will give out a java value based on the semantics captured
+     * in the {@link InputValueWithState} from {@link GraphQLArgument#getArgumentDefaultValue()}
+     *
+     * Note : You MUST only call this on a {@link GraphQLArgument} that is part of a fully formed schema.  We need
+     * all of the types to be resolved in order for this work correctly.
+     *
+     * Note: This method will return null if the value is not set or explicitly set to null.  If you you to know the difference
+     * when "not set" and "set to null" then you cant use this method.  Rather you should use {@link GraphQLArgument#getArgumentDefaultValue()}
+     * and use the {@link InputValueWithState#isNotSet()} methods to decide how to handle those values.
+     *
+     * @param argument the fully formed {@link GraphQLArgument}
+     * @param <T>      the type you want it cast as
+     *
+     * @return a value of type T which is the java value of the argument default
+     */
+    public static <T> T getArgumentDefaultValue(GraphQLArgument argument) {
+        return getInputValueImpl(argument.getType(), argument.getArgumentDefaultValue());
+    }
 
     public String getDescription() {
         return description;
@@ -135,29 +188,45 @@ public class GraphQLArgument implements GraphQLNamedSchemaElement, GraphQLInputV
 
     @Override
     public List<GraphQLDirective> getDirectives() {
-        return directives.getDirectives();
+        return directivesHolder.getDirectives();
     }
 
     @Override
     public Map<String, GraphQLDirective> getDirectivesByName() {
-        return directives.getDirectivesByName();
+        return directivesHolder.getDirectivesByName();
     }
 
     @Override
     public Map<String, List<GraphQLDirective>> getAllDirectivesByName() {
-        return directives.getAllDirectivesByName();
+        return directivesHolder.getAllDirectivesByName();
     }
 
     @Override
     public GraphQLDirective getDirective(String directiveName) {
-        return directives.getDirective(directiveName);
+        return directivesHolder.getDirective(directiveName);
+    }
+
+    @Override
+    public List<GraphQLAppliedDirective> getAppliedDirectives() {
+        return directivesHolder.getAppliedDirectives();
+    }
+
+    @Override
+    public Map<String, List<GraphQLAppliedDirective>> getAllAppliedDirectivesByName() {
+        return directivesHolder.getAllAppliedDirectivesByName();
+    }
+
+    @Override
+    public GraphQLAppliedDirective getAppliedDirective(String directiveName) {
+        return directivesHolder.getAppliedDirective(directiveName);
     }
 
     @Override
     public List<GraphQLSchemaElement> getChildren() {
         List<GraphQLSchemaElement> children = new ArrayList<>();
         children.add(getType());
-        children.addAll(directives.getDirectives());
+        children.addAll(directivesHolder.getDirectives());
+        children.addAll(directivesHolder.getAppliedDirectives());
         return children;
     }
 
@@ -165,8 +234,9 @@ public class GraphQLArgument implements GraphQLNamedSchemaElement, GraphQLInputV
     @Override
     public SchemaElementChildrenContainer getChildrenWithTypeReferences() {
         return SchemaElementChildrenContainer.newSchemaElementChildrenContainer()
-                .children(CHILD_DIRECTIVES, directives.getDirectives())
                 .child(CHILD_TYPE, originalType)
+                .children(CHILD_DIRECTIVES, directivesHolder.getDirectives())
+                .children(CHILD_APPLIED_DIRECTIVES, directivesHolder.getAppliedDirectives())
                 .build();
     }
 
@@ -174,7 +244,9 @@ public class GraphQLArgument implements GraphQLNamedSchemaElement, GraphQLInputV
     public GraphQLArgument withNewChildren(SchemaElementChildrenContainer newChildren) {
         return transform(builder ->
                 builder.type(newChildren.getChildOrNull(CHILD_TYPE))
-                        .replaceDirectives(newChildren.getChildren(CHILD_DIRECTIVES)));
+                        .replaceDirectives(newChildren.getChildren(CHILD_DIRECTIVES))
+                        .replaceAppliedDirectives(newChildren.getChildren(CHILD_APPLIED_DIRECTIVES))
+        );
     }
 
     @Override
@@ -237,14 +309,26 @@ public class GraphQLArgument implements GraphQLNamedSchemaElement, GraphQLInputV
                 '}';
     }
 
-    public static class Builder extends GraphqlTypeBuilder {
+    /**
+     * This method can be used to turn an argument that was being use as an applied argument into one.
+     *
+     * @return an {@link GraphQLAppliedDirectiveArgument}
+     */
+    public GraphQLAppliedDirectiveArgument toAppliedArgument() {
+        return GraphQLAppliedDirectiveArgument.newArgument()
+                .name(name)
+                .type(getType())
+                .inputValueWithState(value)
+                .build();
+    }
+
+    public static class Builder extends GraphqlDirectivesContainerTypeBuilder<Builder, Builder> {
 
         private GraphQLInputType type;
         private InputValueWithState defaultValue = InputValueWithState.NOT_SET;
         private InputValueWithState value = InputValueWithState.NOT_SET;
         private String deprecationReason;
         private InputValueDefinition definition;
-        private final List<GraphQLDirective> directives = new ArrayList<>();
 
 
         public Builder() {
@@ -258,25 +342,7 @@ public class GraphQLArgument implements GraphQLNamedSchemaElement, GraphQLInputV
             this.description = existing.getDescription();
             this.definition = existing.getDefinition();
             this.deprecationReason = existing.deprecationReason;
-            DirectivesUtil.enforceAddAll(this.directives, existing.getDirectives());
-        }
-
-        @Override
-        public Builder name(String name) {
-            super.name(name);
-            return this;
-        }
-
-        @Override
-        public Builder description(String description) {
-            super.description(description);
-            return this;
-        }
-
-        @Override
-        public Builder comparatorRegistry(GraphqlTypeComparatorRegistry comparatorRegistry) {
-            super.comparatorRegistry(comparatorRegistry);
-            return this;
+            copyExistingDirectives(existing);
         }
 
         public Builder definition(InputValueDefinition definition) {
@@ -295,9 +361,11 @@ public class GraphQLArgument implements GraphQLNamedSchemaElement, GraphQLInputV
         }
 
         /**
-         * @param defaultValue
+         * A legacy method that sets a default value into the argument
          *
-         * @return
+         * @param defaultValue a default value
+         *
+         * @return this builder
          *
          * @deprecated use {@link #defaultValueLiteral(Value)} or {@link #defaultValueProgrammatic(Object)}
          */
@@ -310,7 +378,7 @@ public class GraphQLArgument implements GraphQLNamedSchemaElement, GraphQLInputV
         /**
          * @param defaultValue can't be null as a `null` is represented a @{@link graphql.language.NullValue} Literal
          *
-         * @return
+         * @return this builder
          */
         public Builder defaultValueLiteral(@NotNull Value defaultValue) {
             this.defaultValue = InputValueWithState.newLiteralValue(defaultValue);
@@ -320,7 +388,7 @@ public class GraphQLArgument implements GraphQLNamedSchemaElement, GraphQLInputV
         /**
          * @param defaultValue Can be null to represent null value
          *
-         * @return
+         * @return this builder
          */
         public Builder defaultValueProgrammatic(@Nullable Object defaultValue) {
             this.defaultValue = InputValueWithState.newExternalValue(defaultValue);
@@ -330,7 +398,7 @@ public class GraphQLArgument implements GraphQLNamedSchemaElement, GraphQLInputV
         /**
          * Removes the defaultValue to represent a missing default value (which is different from null)
          *
-         * @return
+         * @return this builder
          */
         public Builder clearDefaultValue() {
             this.defaultValue = InputValueWithState.NOT_SET;
@@ -338,9 +406,11 @@ public class GraphQLArgument implements GraphQLNamedSchemaElement, GraphQLInputV
         }
 
         /**
-         * @param value
+         * A legacy method for setting an arguments value
          *
-         * @return
+         * @param value the argument value
+         *
+         * @return this builder
          *
          * @deprecated use {@link #valueLiteral(Value)} or {@link #valueProgrammatic(Object)}
          */
@@ -351,18 +421,28 @@ public class GraphQLArgument implements GraphQLNamedSchemaElement, GraphQLInputV
         }
 
         /**
+         * Sets a literal AST value as the arguments value
+         *
          * @param value can't be null as a `null` is represented a @{@link graphql.language.NullValue} Literal
+         *
+         * @return this builder
+         *
+         * @deprecated use {@link  GraphQLAppliedDirectiveArgument} methods instead
          */
+        @Deprecated
         public Builder valueLiteral(@NotNull Value value) {
             this.value = InputValueWithState.newLiteralValue(value);
             return this;
         }
 
         /**
-         * @param value
+         * @param value values can be null to represent null value
          *
-         * @return values can be null to represent null value
+         * @return this builder
+         *
+         * @deprecated use {@link  GraphQLAppliedDirectiveArgument} methods instead
          */
+        @Deprecated
         public Builder valueProgrammatic(@Nullable Object value) {
             this.value = InputValueWithState.newExternalValue(value);
             return this;
@@ -371,49 +451,51 @@ public class GraphQLArgument implements GraphQLNamedSchemaElement, GraphQLInputV
         /**
          * Removes the value to represent a missing value (which is different from null)
          *
-         * @return
+         * @return this builder
+         *
+         * @deprecated use {@link  GraphQLAppliedDirectiveArgument} methods instead
          */
+        @Deprecated
         public Builder clearValue() {
             this.value = InputValueWithState.NOT_SET;
             return this;
         }
 
-        public Builder withDirectives(GraphQLDirective... directives) {
-            assertNotNull(directives, () -> "directives can't be null");
-            this.directives.clear();
-            for (GraphQLDirective directive : directives) {
-                withDirective(directive);
-            }
-            return this;
-        }
-
-        public Builder withDirective(GraphQLDirective directive) {
-            assertNotNull(directive, () -> "directive can't be null");
-            DirectivesUtil.enforceAdd(this.directives, directive);
-            return this;
-        }
-
+        // -- the following are repeated to avoid a binary incompatibility problem --
+        @Override
         public Builder replaceDirectives(List<GraphQLDirective> directives) {
-            assertNotNull(directives, () -> "directive can't be null");
-            this.directives.clear();
-            DirectivesUtil.enforceAddAll(this.directives, directives);
-            return this;
+            return super.replaceDirectives(directives);
         }
 
+        @Override
+        public Builder withDirectives(GraphQLDirective... directives) {
+            return super.withDirectives(directives);
+        }
+
+        @Override
+        public Builder withDirective(GraphQLDirective directive) {
+            return super.withDirective(directive);
+        }
+
+        @Override
         public Builder withDirective(GraphQLDirective.Builder builder) {
-            return withDirective(builder.build());
+            return super.withDirective(builder);
         }
 
-        /**
-         * This is used to clear all the directives in the builder so far.
-         *
-         * @return the builder
-         */
+        @Override
         public Builder clearDirectives() {
-            directives.clear();
-            return this;
+            return super.clearDirectives();
         }
 
+        @Override
+        public Builder name(String name) {
+            return super.name(name);
+        }
+
+        @Override
+        public Builder description(String description) {
+            return super.description(description);
+        }
 
         public GraphQLArgument build() {
             assertNotNull(type, () -> "type can't be null");
@@ -426,6 +508,7 @@ public class GraphQLArgument implements GraphQLNamedSchemaElement, GraphQLInputV
                     value,
                     definition,
                     sort(directives, GraphQLArgument.class, GraphQLDirective.class),
+                    sort(appliedDirectives, GraphQLScalarType.class, GraphQLAppliedDirective.class),
                     deprecationReason
             );
         }

@@ -4,18 +4,23 @@ import graphql.analysis.MaxQueryComplexityInstrumentation
 import graphql.analysis.MaxQueryDepthInstrumentation
 import graphql.collect.ImmutableKit
 import graphql.execution.AsyncExecutionStrategy
+import graphql.execution.AsyncSerialExecutionStrategy
 import graphql.execution.DataFetcherExceptionHandler
+import graphql.execution.DataFetcherExceptionHandlerParameters
+import graphql.execution.DataFetcherExceptionHandlerResult
 import graphql.execution.DataFetcherResult
 import graphql.execution.ExecutionContext
 import graphql.execution.ExecutionId
 import graphql.execution.ExecutionIdProvider
 import graphql.execution.ExecutionStrategyParameters
 import graphql.execution.MissingRootTypeException
-import graphql.execution.batched.BatchedExecutionStrategy
+import graphql.execution.SubscriptionExecutionStrategy
+import graphql.execution.ValueUnboxer
 import graphql.execution.instrumentation.ChainedInstrumentation
 import graphql.execution.instrumentation.Instrumentation
 import graphql.execution.instrumentation.SimpleInstrumentation
 import graphql.execution.instrumentation.dataloader.DataLoaderDispatcherInstrumentation
+import graphql.execution.preparsed.NoOpPreparsedDocumentProvider
 import graphql.language.SourceLocation
 import graphql.schema.DataFetcher
 import graphql.schema.DataFetchingEnvironment
@@ -179,6 +184,31 @@ class GraphQLTest extends Specification {
         errors[0].locations == [new SourceLocation(1, 8)]
     }
 
+    def "query with invalid Unicode surrogate in argument - no trailing value"() {
+        given:
+        GraphQLSchema schema = newSchema().query(
+                newObject()
+                        .name("RootQueryType")
+                        .field(newFieldDefinition()
+                                .name("field")
+                                .type(GraphQLString)
+                                .argument(newArgument()
+                                        .name("arg")
+                                        .type(GraphQLNonNull.nonNull(GraphQLString))))
+                        .build()
+        ).build()
+
+        when:
+        // Invalid Unicode character - leading surrogate value without trailing surrogate value
+        def errors = GraphQL.newGraphQL(schema).build().execute('{ hello(arg:"\\ud83c") }').errors
+
+        then:
+        errors.size() == 1
+        errors[0].errorType == ErrorType.InvalidSyntax
+        errors[0].message == "Invalid Syntax : Invalid unicode - leading surrogate must be followed by a trailing surrogate - offending token '\\ud83c' at line 1 column 13"
+        errors[0].locations == [new SourceLocation(1, 13)]
+    }
+
     def "non null argument is missing"() {
         given:
         GraphQLSchema schema = newSchema().query(
@@ -244,7 +274,7 @@ class GraphQLTest extends Specification {
         def expected = [field2: 'value2']
 
         when:
-        def executionInput = newExecutionInput().query(query).operationName('Query2').context(null).variables([:])
+        def executionInput = newExecutionInput().query(query).operationName('Query2').variables([:])
         def result = GraphQL.newGraphQL(schema).build().execute(executionInput)
 
         then:
@@ -791,79 +821,6 @@ class GraphQLTest extends Specification {
         'max query complexity' | new MaxQueryComplexityInstrumentation(10)
     }
 
-
-    def "batched execution with non batched DataFetcher returning CompletableFuture"() {
-        given:
-        GraphQLObjectType foo = newObject()
-                .name("Foo")
-                .withInterface(typeRef("Node"))
-                .field(
-                        { field ->
-                            field
-                                    .name("id")
-                                    .type(Scalars.GraphQLID)
-                        } as UnaryOperator)
-                .build()
-
-        GraphQLInterfaceType node = GraphQLInterfaceType.newInterface()
-                .name("Node")
-                .field(
-                        { field ->
-                            field
-                                    .name("id")
-                                    .type(Scalars.GraphQLID)
-                        } as UnaryOperator)
-                .typeResolver(
-                        {
-                            env ->
-                                if (env.getObject() instanceof CompletableFuture) {
-                                    throw new RuntimeException("This seems bad!")
-                                }
-
-                                return foo
-                        })
-                .build()
-
-        GraphQLObjectType query = newObject()
-                .name("RootQuery")
-                .field(
-                        { field ->
-                            field
-                                    .name("node")
-                                    .dataFetcher(
-                                            { env ->
-                                                CompletableFuture.supplyAsync({ ->
-                                                    Map<String, String> map = new HashMap<>()
-                                                    map.put("id", "abc")
-
-                                                    return map
-                                                })
-                                            })
-                                    .type(node)
-                        } as UnaryOperator)
-                .build()
-
-        GraphQLSchema schema = newSchema()
-                .query(query)
-                .additionalType(foo)
-                .build()
-
-        GraphQL graphQL = GraphQL.newGraphQL(schema)
-                .queryExecutionStrategy(new BatchedExecutionStrategy())
-                .mutationExecutionStrategy(new BatchedExecutionStrategy())
-                .build()
-
-        ExecutionInput executionInput = newExecutionInput()
-                .query("{node {id}}")
-                .build()
-        when:
-        def result = graphQL
-                .execute(executionInput)
-
-        then:
-        result.getData() == [node: [id: "abc"]]
-    }
-
     class CaptureStrategy extends AsyncExecutionStrategy {
         ExecutionId executionId = null
         Instrumentation instrumentation = null
@@ -1174,6 +1131,26 @@ many lines''']
 
     }
 
+    def "default value defined in the schema is used when none provided in the query"() {
+        // Spec (https://spec.graphql.org/June2018/#sec-All-Variable-Usages-are-Allowed): A notable exception to typical variable type compatibility is allowing a variable definition with a nullable type to be provided to a non‐null location as long as either that variable or that location provides a default value.
+        given:
+        def spec = """type Query {
+            sayHello(name: String! = "amigo"): String
+        }"""
+        def df = { dfe ->
+            return dfe.getArgument("name")
+        } as DataFetcher
+        def graphQL = TestUtil.graphQL(spec, ["Query": ["sayHello": df]]).build()
+
+        when:
+        def result = graphQL.execute('query($var:String){sayHello(name:$var)}');
+
+        then:
+        result.errors.isEmpty()
+        result.getData() == [sayHello: "amigo"]
+
+    }
+
     def "specified url can be defined and queried via introspection"() {
         given:
         GraphQLSchema schema = TestUtil.schema('type Query {foo: MyScalar} scalar MyScalar @specifiedBy(url:"myUrl")');
@@ -1201,16 +1178,23 @@ many lines''']
         er.data["f"] == "hi"
     }
 
+
     def "can set default fetcher exception handler"() {
+
+
         def sdl = 'type Query { f : String } '
 
         DataFetcher df = { env ->
             throw new RuntimeException("BANG!")
         }
         def capturedMsg = null
-        def exceptionHandler = { params ->
-            capturedMsg = params.exception.getMessage()
-        } as DataFetcherExceptionHandler
+        def exceptionHandler = new DataFetcherExceptionHandler() {
+            @Override
+            CompletableFuture<DataFetcherExceptionHandlerResult> handleException(DataFetcherExceptionHandlerParameters params) {
+                capturedMsg = params.exception.getMessage()
+                return CompletableFuture.completedFuture(DataFetcherExceptionHandlerResult.newResult().build())
+            }
+        }
         def schema = TestUtil.schema(sdl, [Query: [f: df]])
         def graphQL = GraphQL.newGraphQL(schema).defaultDataFetcherExceptionHandler(exceptionHandler).build()
         when:
@@ -1356,5 +1340,20 @@ many lines''']
         then:
         def e = thrown(InvalidSchemaException)
         e.message.contains("Invalid argument 'arg' for applied directive of name 'cached'")
+    }
+
+    def "getters work as expected"() {
+        Instrumentation instrumentation = new SimpleInstrumentation()
+        when:
+        def graphQL = GraphQL.newGraphQL(StarWarsSchema.starWarsSchema).instrumentation(instrumentation).build()
+        then:
+        graphQL.getGraphQLSchema() == StarWarsSchema.starWarsSchema
+        graphQL.getIdProvider() == ExecutionIdProvider.DEFAULT_EXECUTION_ID_PROVIDER
+        graphQL.getValueUnboxer() == ValueUnboxer.DEFAULT
+        graphQL.getPreparsedDocumentProvider() == NoOpPreparsedDocumentProvider.INSTANCE
+        graphQL.getInstrumentation() instanceof ChainedInstrumentation
+        graphQL.getQueryStrategy() instanceof AsyncExecutionStrategy
+        graphQL.getMutationStrategy() instanceof AsyncSerialExecutionStrategy
+        graphQL.getSubscriptionStrategy() instanceof SubscriptionExecutionStrategy
     }
 }

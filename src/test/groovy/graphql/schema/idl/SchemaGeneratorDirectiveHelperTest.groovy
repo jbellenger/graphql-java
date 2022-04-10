@@ -34,7 +34,7 @@ import static graphql.schema.DataFetcherFactories.wrapDataFetcher
 
 class SchemaGeneratorDirectiveHelperTest extends Specification {
 
-    def customScalarType = new GraphQLScalarType("ScalarType", "", new Coercing() {
+    def customScalarType = GraphQLScalarType.newScalar().name("ScalarType").coercing(new Coercing() {
         @Override
         Object serialize(Object input) throws CoercingSerializeException {
             return input
@@ -50,8 +50,9 @@ class SchemaGeneratorDirectiveHelperTest extends Specification {
             return input
         }
     })
+            .build()
 
-    def assertCallHierarchy(elementHierarchy, astHierarchy, String name, List<String> l) {
+    static def assertCallHierarchy(elementHierarchy, astHierarchy, String name, List<String> l) {
         assert elementHierarchy[name] == l, "unexpected elementHierarchy"
         assert astHierarchy[name] == l, "unexpected astHierarchy"
         true
@@ -495,8 +496,8 @@ class SchemaGeneratorDirectiveHelperTest extends Specification {
                 }
                 contextMap.put(key, true)
 
-                DataFetcher wrapper = { dfEnv ->
-                    def flag = dfEnv.getContext()['protectSecrets']
+                DataFetcher wrapper = { DataFetchingEnvironment dfEnv ->
+                    def flag = dfEnv.getGraphQlContext().get('protectSecrets')
                     if (flag == null || flag == false) {
                         return originalFetcher.get(dfEnv)
                     }
@@ -537,7 +538,7 @@ class SchemaGeneratorDirectiveHelperTest extends Specification {
         def executionInput = ExecutionInput.newExecutionInput()
                 .root(root)
                 .query(query)
-                .context([protectSecrets: true])
+                .graphQLContext([protectSecrets: true])
                 .build()
 
         def er = graphQL.execute(executionInput)
@@ -553,7 +554,7 @@ class SchemaGeneratorDirectiveHelperTest extends Specification {
         executionInput = ExecutionInput.newExecutionInput()
                 .root(root)
                 .query(query)
-                .context([protectSecrets: false])
+                .graphQLContext([protectSecrets: false])
                 .build()
 
         er = graphQL.execute(executionInput)
@@ -775,9 +776,11 @@ class SchemaGeneratorDirectiveHelperTest extends Specification {
                 def arg = env.getElement()
                 if (arg.getName() == "arg1") {
                     assert env.getDirectives().keySet().sort() == ["argDirective1", "argDirective2"]
+                    assert env.getAppliedDirectives().keySet().sort() == ["argDirective1", "argDirective2"]
                 }
                 if (arg.getName() == "arg2") {
                     assert env.getDirectives().keySet().sort() == ["argDirective3"]
+                    assert env.getAppliedDirectives().keySet().sort() == ["argDirective3"]
                 }
                 def fieldDef = env.getFieldDefinition()
                 assert fieldDef != null
@@ -803,6 +806,15 @@ class SchemaGeneratorDirectiveHelperTest extends Specification {
                         .sort()
 
                 assert argDirectiveNames == ["argDirective1", "argDirective2", "argDirective3"]
+
+                def argAppliedDirectiveNames = fieldDef.getArguments()
+                        .stream()
+                        .map({ a -> a.getAppliedDirectives() })
+                        .flatMap({ dl -> dl.stream() })
+                        .collect { d -> d.getName() }
+                        .sort()
+
+                assert argAppliedDirectiveNames == ["argDirective1", "argDirective2", "argDirective3"]
 
                 return env.getElement()
             }
@@ -923,26 +935,50 @@ class SchemaGeneratorDirectiveHelperTest extends Specification {
             }
         }
 
+        def wiringFactory = new WiringFactory() {
+            @Override
+            boolean providesSchemaDirectiveWiring(SchemaDirectiveWiringEnvironment environment) {
+                true
+            }
+
+            @Override
+            SchemaDirectiveWiring getSchemaDirectiveWiring(SchemaDirectiveWiringEnvironment environment) {
+                return generalWiring
+            }
+        }
+
+        when: "Its via a hard coded wiring"
         def runtimeWiring = RuntimeWiring.newRuntimeWiring()
                 .directiveWiring(generalWiring)
                 .build()
-
-        when:
-        def schema = schema(sdl, runtimeWiring)
+        def graphqlSchema = schema(sdl, runtimeWiring)
 
         then:
+        assert directiveWiringAsserts(graphqlSchema)
+
+        when: "It via a wiring factory"
+        runtimeWiring = RuntimeWiring.newRuntimeWiring()
+                .wiringFactory(wiringFactory)
+                .build()
+        graphqlSchema = schema(sdl, runtimeWiring)
+
+        then:
+        assert directiveWiringAsserts(graphqlSchema)
+    }
+
+    static def directiveWiringAsserts(schema) {
         def queryType = schema.getObjectType("yreuQ")
-        queryType != null
+        assert queryType != null
 
         def fld = queryType.getFieldDefinition("dleif")
-        fld != null
+        assert fld != null
 
         def arg = fld.getArgument("gra")
-        arg != null
+        assert arg != null
+        true
     }
 
-    def reverse(String s) {
+    static def reverse(String s) {
         new StringBuilder(s).reverse().toString()
     }
-
 }
