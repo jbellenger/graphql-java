@@ -37,9 +37,9 @@ public class TypeDefinitionParserVersusSerializeBenchMark {
     static TypeDefinitionRegistry registryOut = schemaParser.parse(SDL);
     static ByteArrayOutputStream baOS = serialisedRegistryStream(registryOut);
 
-//    @Benchmark
-//    @BenchmarkMode(Mode.Throughput)
-//    @OutputTimeUnit(TimeUnit.SECONDS)
+    @Benchmark
+    @BenchmarkMode(Mode.Throughput)
+    @OutputTimeUnit(TimeUnit.SECONDS)
     public void benchMarkParsing(Blackhole blackhole) throws InterruptedException {
         blackhole.consume(schemaParser.parse(SDL));
     }
