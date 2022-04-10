@@ -146,15 +146,14 @@ async function findPerformanceResults(sha: string): Promise<PerfResults | null> 
         Prefix: "jmh-results/jmh-" + sha
     };
     const listResult = await s3Client.send<ListObjectsV2CommandInput, ListObjectsV2CommandOutput>(new ListObjectsV2Command(listInput));
-    if (!listResult.KeyCount) {
+
+    if (listResult.KeyCount === undefined) {
         console.log('unexpected response: KeyCount undefined', listResult);
         throw new Error('unexpected response: KeyCount undefined ');
-    }
-    if (listResult.KeyCount == 0) {
+    } else if (listResult.KeyCount == 0) {
         console.log(`no perf results found for ${sha}`);
         return null;
-    }
-    if (listResult.KeyCount > 1) {
+    } else if (listResult.KeyCount > 1) {
         console.log('multiple entries found ... using the last one', listResult);
     }
     const key = listResult.Contents!![listResult.KeyCount - 1].Key
