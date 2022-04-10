@@ -37,7 +37,7 @@ import static graphql.Assert.assertTrue;
 @Threads(1)
 @Warmup(iterations = 5, time = 5)
 @Measurement(iterations = 10, time = 10)
-@Fork(3)
+@Fork(1)
 @OutputTimeUnit(TimeUnit.MILLISECONDS)
 public class ValidatorBenchmark {
 
@@ -71,7 +71,7 @@ public class ValidatorBenchmark {
     }
 
     @Benchmark
-    public void runValidator(MyState state) {
+    public void runValidator(MyState state) throws InterruptedException {
         Validator validator = new Validator();
         validator.validateDocument(state.schema, state.document);
     }

@@ -3,6 +3,7 @@ package benchmark;
 import graphql.execution.instrumentation.dataloader.LevelMap;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
+import org.openjdk.jmh.annotations.Fork;
 import org.openjdk.jmh.annotations.Measurement;
 import org.openjdk.jmh.annotations.Mode;
 import org.openjdk.jmh.annotations.Scope;
@@ -18,10 +19,11 @@ import java.util.concurrent.TimeUnit;
 @BenchmarkMode(Mode.Throughput)
 @Warmup(iterations = 2)
 @Measurement(iterations = 2, timeUnit = TimeUnit.NANOSECONDS)
+@Fork(1)
 public class IntMapBenchmark {
 
 	@Benchmark
-	public void benchmarkLinkedHashMap(Blackhole blackhole) {
+	public void benchmarkLinkedHashMap(Blackhole blackhole) throws InterruptedException {
 		Map<Integer, Integer> result = new LinkedHashMap<>();
 		for (int i = 0; i < 30; i++) {
 			int level = i % 10;
@@ -32,7 +34,7 @@ public class IntMapBenchmark {
 	}
 
 	@Benchmark
-	public void benchmarkIntMap(Blackhole blackhole) {
+	public void benchmarkIntMap(Blackhole blackhole) throws InterruptedException {
 		LevelMap result = new LevelMap(16);
 		for (int i = 0; i < 30; i++) {
 			int level = i % 10;

@@ -36,13 +36,13 @@ import java.util.concurrent.TimeUnit;
 import static com.google.common.io.Resources.getResource;
 import static graphql.Assert.assertTrue;
 
-@State(Scope.Benchmark)
-@BenchmarkMode(Mode.AverageTime)
-@Threads(1)
-@Warmup(iterations = 2, time = 5)
-@Measurement(iterations = 3, time = 10)
-@Fork(3)
-@OutputTimeUnit(TimeUnit.MILLISECONDS)
+//@State(Scope.Benchmark)
+//@BenchmarkMode(Mode.AverageTime)
+//@Threads(1)
+//@Warmup(iterations = 2, time = 5)
+//@Measurement(iterations = 3, time = 10)
+//@Fork(3)
+//@OutputTimeUnit(TimeUnit.MILLISECONDS)
 public class OverlappingFieldValidationBenchmark {
 
     @State(Scope.Benchmark)
@@ -75,15 +75,15 @@ public class OverlappingFieldValidationBenchmark {
         }
     }
 
-    @Benchmark
-    public void overlappingFieldValidationAbgTime(MyState myState, Blackhole blackhole) {
+//    @Benchmark
+    public void overlappingFieldValidationAbgTime(MyState myState, Blackhole blackhole) throws InterruptedException {
         blackhole.consume(validateQuery(myState.schema, myState.document));
     }
 
-    @Benchmark
-    @BenchmarkMode(Mode.Throughput)
-    @OutputTimeUnit(TimeUnit.SECONDS)
-    public void overlappingFieldValidationThroughput(MyState myState, Blackhole blackhole) {
+//    @Benchmark
+//    @BenchmarkMode(Mode.Throughput)
+//    @OutputTimeUnit(TimeUnit.SECONDS)
+    public void overlappingFieldValidationThroughput(MyState myState, Blackhole blackhole) throws InterruptedException {
         blackhole.consume(validateQuery(myState.schema, myState.document));
     }
 

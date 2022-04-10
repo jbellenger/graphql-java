@@ -37,10 +37,10 @@ import java.util.concurrent.TimeUnit;
 
 import static com.google.common.io.Resources.getResource;
 
-@State(Scope.Benchmark)
-@BenchmarkMode(Mode.Throughput)
-@Warmup(iterations = 2)
-@Measurement(iterations = 2, timeUnit = TimeUnit.NANOSECONDS)
+//@State(Scope.Benchmark)
+//@BenchmarkMode(Mode.Throughput)
+//@Warmup(iterations = 2)
+//@Measurement(iterations = 2, timeUnit = TimeUnit.NANOSECONDS)
 public class NQBenchmark2 {
 
     @State(Scope.Benchmark)
@@ -69,13 +69,13 @@ public class NQBenchmark2 {
         }
     }
 
-    @Benchmark
-    @Warmup(iterations = 2)
-    @Measurement(iterations = 3, time = 10)
-    @Threads(1)
-    @Fork(3)
-    @BenchmarkMode(Mode.AverageTime)
-    @OutputTimeUnit(TimeUnit.MILLISECONDS)
+//    @Benchmark
+//    @Warmup(iterations = 2)
+//    @Measurement(iterations = 3, time = 10)
+//    @Threads(1)
+//    @Fork(3)
+//    @BenchmarkMode(Mode.AverageTime)
+//    @OutputTimeUnit(TimeUnit.MILLISECONDS)
     public ExecutableNormalizedOperation benchMarkAvgTime(MyState myState) throws ExecutionException, InterruptedException {
         ExecutableNormalizedOperation executableNormalizedOperation = ExecutableNormalizedOperationFactory.createExecutableNormalizedOperation(myState.schema, myState.document, null, Collections.emptyMap());
 //        System.out.println("fields size:" + normalizedQuery.getFieldToNormalizedField().size());

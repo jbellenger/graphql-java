@@ -33,25 +33,25 @@ import static graphql.schema.idl.TypeRuntimeWiring.newTypeWiring;
  * <p>
  * Install it and then just hit "Run" on a certain benchmark method
  */
-@Warmup(iterations = 2, time = 5, batchSize = 3)
-@Measurement(iterations = 3, time = 10, batchSize = 4)
+//@Warmup(iterations = 2, time = 5, batchSize = 3)
+//@Measurement(iterations = 3, time = 10, batchSize = 4)
 public class BenchMark {
 
     private static final int NUMBER_OF_FRIENDS = 10 * 100;
 
     static GraphQL graphQL = buildGraphQL();
 
-    @Benchmark
-    @BenchmarkMode(Mode.Throughput)
-    @OutputTimeUnit(TimeUnit.SECONDS)
-    public void benchMarkSimpleQueriesThroughput() {
+//    @Benchmark
+//    @BenchmarkMode(Mode.Throughput)
+//    @OutputTimeUnit(TimeUnit.SECONDS)
+    public void benchMarkSimpleQueriesThroughput() throws InterruptedException {
         executeQuery();
     }
 
-    @Benchmark
-    @BenchmarkMode(Mode.AverageTime)
-    @OutputTimeUnit(TimeUnit.MILLISECONDS)
-    public void benchMarkSimpleQueriesAvgTime() {
+//    @Benchmark
+//    @BenchmarkMode(Mode.AverageTime)
+//    @OutputTimeUnit(TimeUnit.MILLISECONDS)
+    public void benchMarkSimpleQueriesAvgTime() throws InterruptedException {
         executeQuery();
     }
 

@@ -28,10 +28,10 @@ import java.util.concurrent.TimeUnit;
 
 import static com.google.common.io.Resources.getResource;
 
-@State(Scope.Benchmark)
-@BenchmarkMode(Mode.Throughput)
-@Warmup(iterations = 2)
-@Measurement(iterations = 2, timeUnit = TimeUnit.NANOSECONDS)
+//@State(Scope.Benchmark)
+//@BenchmarkMode(Mode.Throughput)
+//@Warmup(iterations = 2)
+//@Measurement(iterations = 2, timeUnit = TimeUnit.NANOSECONDS)
 public class NQBenchmark1 {
 
     @State(Scope.Benchmark)
@@ -60,25 +60,25 @@ public class NQBenchmark1 {
         }
     }
 
-    @Benchmark
-    @Warmup(iterations = 2)
-    @Measurement(iterations = 3, time = 10)
-    @Threads(1)
-    @Fork(3)
-    @BenchmarkMode(Mode.AverageTime)
-    @OutputTimeUnit(TimeUnit.MILLISECONDS)
-    public void benchMarkAvgTime(MyState myState, Blackhole blackhole )  {
+//    @Benchmark
+//    @Warmup(iterations = 2)
+//    @Measurement(iterations = 3, time = 10)
+//    @Threads(1)
+//    @Fork(3)
+//    @BenchmarkMode(Mode.AverageTime)
+//    @OutputTimeUnit(TimeUnit.MILLISECONDS)
+    public void benchMarkAvgTime(MyState myState, Blackhole blackhole )  throws InterruptedException {
         runImpl(myState, blackhole);
     }
 
-    @Benchmark
-    @Warmup(iterations = 2)
-    @Measurement(iterations = 3, time = 10)
-    @Threads(1)
-    @Fork(3)
-    @BenchmarkMode(Mode.Throughput)
-    @OutputTimeUnit(TimeUnit.SECONDS)
-    public void benchMarkThroughput(MyState myState, Blackhole blackhole )  {
+//    @Benchmark
+//    @Warmup(iterations = 2)
+//    @Measurement(iterations = 3, time = 10)
+//    @Threads(1)
+//    @Fork(3)
+//    @BenchmarkMode(Mode.Throughput)
+//    @OutputTimeUnit(TimeUnit.SECONDS)
+    public void benchMarkThroughput(MyState myState, Blackhole blackhole )  throws InterruptedException {
         runImpl(myState, blackhole);
     }
 
