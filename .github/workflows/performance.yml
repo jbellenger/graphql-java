@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - master
-      - perf-testing
+      - jbellenger/perf-testing
 
 jobs:
   performance_tests:
