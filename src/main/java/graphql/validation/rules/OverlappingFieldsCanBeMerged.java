@@ -2,6 +2,8 @@ package graphql.validation.rules;
 
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
+
 import graphql.Internal;
 import graphql.execution.TypeFromAST;
 import graphql.language.Argument;
@@ -141,7 +143,6 @@ public class OverlappingFieldsCanBeMerged extends AbstractRule {
     private GraphQLFieldDefinition getVisibleFieldDefinition(GraphQLFieldsContainer fieldsContainer, Field field) {
         return getValidationContext().getSchema().getCodeRegistry().getFieldVisibility().getFieldDefinition(fieldsContainer, field.getName());
     }
-
 
     private List<Conflict> findConflicts(Map<String, Set<FieldAndType>> fieldMap) {
         /*
@@ -386,14 +387,11 @@ public class OverlappingFieldsCanBeMerged extends AbstractRule {
 
     private static class Conflict {
         final String reason;
-        final Set<Field> fields = new LinkedHashSet<>();
-
+        final Set<Field> fields;
 
         public Conflict(String reason, List<Field> fields) {
             this.reason = reason;
-            this.fields.addAll(fields);
+            this.fields = ImmutableSet.copyOf(fields);
         }
     }
-
-
 }
