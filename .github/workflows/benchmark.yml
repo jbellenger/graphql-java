@@ -4,6 +4,11 @@ on:
   push:
     branches: 
       - master
+  workflow_dispatch:
+    inputs:
+      benchmarks_to_run:
+        description: Space-separated list of name patterns of benchmarks that should be run. If blank, all tests will be run.
+        required: false
   
 jobs:
   runJmh:
@@ -28,4 +33,4 @@ jobs:
           -f 1
           -rf json
           -rff results.json
-          IntMapBenchmark
+          ${{ github.events.inputs.benchmarks_to_run }}
