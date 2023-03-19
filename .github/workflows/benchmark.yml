@@ -19,7 +19,13 @@ jobs:
       - name: run
         # jmh options:
         #  -f (fork) = 1: run each benchmark in a forked process, once
+        #  -rf (result format) json: return json output
+        #  -rff (result format file) results.json: write output to results.json
+        #  Arg : run classes that match the specified pattern
         run: >
           RELEASE_VERSION=snapshot ./gradlew jmhJar && 
           java -jar build/libs/graphql-java-snapshot-jmh.jar 
           -f 1
+          -rf json
+          -rff results.json
+          TwitterBenchmark
