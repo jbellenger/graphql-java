@@ -8,8 +8,8 @@ on:
 jobs:
   runJmh:
     runs-on: ubuntu-latest
-    # JMB TODO: setup env with secrets to ensure that rando-forks don't publish results
-    # env:
+    # JMB TODO: find a way to limit the ability of rando forks to publish
+    #
     steps:
       - uses: actions/checkout@v1
       - uses: gradle/wrapper-validation-action@v1
@@ -18,4 +18,9 @@ jobs:
         with:
           java-version: '8.0.282'
       - name: run
-        run: ./gradlew jmh
+        run: 
+          # jmh options:
+          #  -f (fork) = 1: run each benchmark in a forked process, once
+          RELEASE_VERSION=snapshot ./gradlew jmhJar && \
+          java -jar build/libs/graphql-java-snapshot-jmh.jar \
+          -f 1
