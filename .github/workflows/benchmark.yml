@@ -28,4 +28,4 @@ jobs:
           -f 1
           -rf json
           -rff results.json
-          TwitterBenchmark
+          IntMapBenchmark
