@@ -18,9 +18,9 @@ jobs:
         with:
           java-version: '8.0.282'
       - name: run
-        run: 
+        run: >
           # jmh options:
           #  -f (fork) = 1: run each benchmark in a forked process, once
-          RELEASE_VERSION=snapshot ./gradlew jmhJar && \
-          java -jar build/libs/graphql-java-snapshot-jmh.jar \
+          RELEASE_VERSION=snapshot ./gradlew jmhJar && 
+          java -jar build/libs/graphql-java-snapshot-jmh.jar 
           -f 1
