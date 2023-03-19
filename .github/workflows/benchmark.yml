@@ -1,0 +1,20 @@
+name: benchmark
+on: 
+  push:
+    branches: 
+      - master
+  
+jobs:
+  runJmh:
+    runs-on: ubuntu-latest
+    # JMB TODO: setup env with secrets to ensure that rando-forks don't publish results
+    # env:
+    steps:
+      - uses: actions/checkout@v1
+      - uses: gradle/wrapper-validation-action@v1
+      - name: Set up JDK 1.8
+        uses: actions/setup-java@v1
+        with:
+          java-version: '8.0.282'
+      - name: run
+          run: ./gradlew jmh
