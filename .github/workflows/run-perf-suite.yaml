@@ -1,0 +1,219 @@
+main:
+  params: [job]
+  steps:
+    - vars:
+        assign:
+          - project_id: ${sys.get_env("GOOGLE_CLOUD_PROJECT_ID")}
+          - collection: "test-runs"
+          - job_id: ${job.jobId}
+          - branch: ${job.branch}
+          - zone: "us-west1-b"
+          - region: "us-west1"
+          - machine_type: ["e2-medium", "e2-standard-4"]
+          - core_name_map : {"${machine_type[0]}": "core_2", "${machine_type[1]}": "core_32"}
+          - project_number: ${sys.get_env("GOOGLE_CLOUD_PROJECT_NUMBER")}
+          - service_account_email: ${project_number + "-compute@developer.gserviceaccount.com"}
+
+    - create_job_in_firestore:
+        call: googleapis.firestore.v1.projects.databases.documents.createDocument
+        args:
+          collectionId: ${collection}
+          parent: ${"projects/" + project_id + "/databases/(default)/documents"}
+          query:
+            documentId: ${job_id}
+          body:
+            fields:
+              jobId:
+                stringValue: ${job_id}
+              status:
+                mapValue:
+                  fields:
+                    core_2:
+                      stringValue: "CREATED"
+                    core_32:
+                      stringValue: "CREATED"
+              branch:
+                stringValue: ${branch}
+    - get_document:
+        call: googleapis.firestore.v1.projects.databases.documents.get
+        args:
+          name: ${"projects/" + project_id + "/databases/(default)/documents/" + collection + "/" + job_id}
+        result: got
+    - validate_saved_document:
+        switch:
+          - condition: ${got.fields.jobId.stringValue == job_id AND got.fields.status.mapValue.fields.core_2.stringValue == "CREATED"}
+            next: parallel_step
+    - failed:
+        raise: ${"got unexpected document"}
+
+    # Create, start, execute tests and delete compute engine vm in parallel.
+    - parallel_step:
+        parallel:
+          for:
+            value: machine
+            in: ${machine_type}
+            steps:
+              - init:
+                  assign:
+                    - instance_name: ${"test-runner-" + machine}
+              - insert_machine:
+                  call: googleapis.compute.v1.instances.insert
+                  args:
+                    project: ${project_id}
+                    zone: ${zone}
+                    body:
+                      tags:
+                        items:
+                          - web
+                      name: ${instance_name}
+                      machineType: ${"zones/" + zone + "/machineTypes/" + machine}
+                      disks:
+                        - initializeParams:
+                            sourceImage: "projects/debian-cloud/global/images/family/debian-10"
+                          boot: true
+                          autoDelete: true
+                      networkInterfaces:
+                        - accessConfigs:
+                            - name: "External NAT"
+                              networkTier: "STANDARD"
+                          subnetwork: ${"projects/" + project_id + "/regions/" + region +"/subnetworks/default"}
+                      metadata:
+                        items:
+                          - key: "startup-script"
+                            value: |
+                              #! /bin/bash
+                              # We will an Azul Zulu build of jdk-8, since we can no longer install
+                              # it directly.
+
+                              # Add Azul's public key
+                              sudo apt-key adv \
+                                --keyserver hkp://keyserver.ubuntu.com:80 \
+                                --recv-keys 0xB1998361219BD9C9
+
+                              # Download and install the package that adds 
+                              # the Azul APT repository to the list of sources 
+                              curl -O https://cdn.azul.com/zulu/bin/zulu-repo_1.0.0-3_all.deb
+                              sudo apt-get install ./zulu-repo_1.0.0-3_all.deb
+                              sudo apt-get update
+
+                              # Install git and open zulu open jdk
+                              sudo apt-get install zulu8-jdk -y
+                              sudo apt-get install git -y
+
+                              # Install Test Runner
+                              git clone https://github.com/adarsh-jaiswal/graphql-java-test-runner.git
+                              cd graphql-java-test-runner
+                              cd test-runner-backend
+                              ./gradlew build
+                              cd build/libs
+                              sudo nohup java -jar -Dserver.port=80 graphql-java-test-runner-0.0.1-SNAPSHOT.jar &
+
+                      serviceAccounts:
+                        - email: ${service_account_email}
+                          scopes:
+                            - https://www.googleapis.com/auth/cloud-platform
+              - assert_machine_is_running:
+                  call: assert_machine_status
+                  args:
+                    expected_status: "RUNNING"
+                    zone: ${zone}
+                    project: ${project_id}
+                    instance: ${instance_name}
+
+              # Extract compute engine's url.
+              - get_instance:
+                  call: googleapis.compute.v1.instances.get
+                  args:
+                    instance: ${instance_name}
+                    project: ${project_id}
+                    zone: ${zone}
+                  result: created_instance
+              - extract_external_ip_and_construct_urls:
+                  assign:
+                    - external_ip: ${created_instance.networkInterfaces[0].accessConfigs[0].natIP}
+                    - base_url: ${"http://" + external_ip + "/"}
+
+              # Perform call to test-runner.
+              - check_test_runner_is_running:
+                  try:
+                    call: http.get
+                    args:
+                      url: ${base_url}
+                  retry:
+                    max_retries: 5
+                    backoff:
+                      initial_delay: 10
+                      max_delay: 60
+                      multiplier: 3
+              - execute_test_run:
+                  call: http.post
+                  args:
+                    url: ${base_url + "test-runner"}
+                    body: ${job}
+                  result: output_result
+              - check_test_runner_is_finished:
+                  try:
+                    steps:
+                      - get_job_status:
+                          call: googleapis.firestore.v1.projects.databases.documents.get
+                          args:
+                            name: ${"projects/" + project_id + "/databases/(default)/documents/" + collection + "/" + job_id}
+                          result: test_result
+                      - init_status:
+                          assign:
+                            - test_status: ${test_result.fields.status.mapValue.fields}
+                            - core_name: ${map.get(core_name_map, machine)}
+                      - call_retry:
+                          switch:
+                            - condition: ${test_status[core_name].stringValue == "RUNNING" OR test_status[core_name].stringValue == "CREATED"}
+                              raise: ${test_result}
+                  # intervals in minutes 2, 4, 8, 16, 32, 32 ...
+                  # retry for approx 12 hours
+                  retry:
+                    max_retries: 25
+                    backoff:
+                      initial_delay: 120
+                      max_delay: 1920
+                      multiplier: 2
+
+              # Destroy compute engine.
+              - stop_machine:
+                  call: googleapis.compute.v1.instances.stop
+                  args:
+                    instance: ${instance_name}
+                    project: ${project_id}
+                    zone: ${zone}
+              - assert_terminated:
+                  call: assert_machine_status
+                  args:
+                    expected_status: "TERMINATED"
+                    zone: ${zone}
+                    project: ${project_id}
+                    instance: ${instance_name}
+              - delete_machine:
+                  call: googleapis.compute.v1.instances.delete
+                  args:
+                    instance: ${instance_name}
+                    project: ${project_id}
+                    zone: ${zone}
+
+    - returnOutput:
+        return: "SUCCESS"
+
+
+assert_machine_status:
+  params: [expected_status, project, zone, instance]
+  steps:
+    - get_instance:
+        call: googleapis.compute.v1.instances.get
+        args:
+          instance: ${instance}
+          project: ${project}
+          zone: ${zone}
+        result: instance
+    - compare:
+        switch:
+          - condition: ${instance.status == expected_status}
+            next: end
+    - fail:
+        raise: ${"Expected VM status is " + expected_status + ". Got " + instance.status + " instead."}
