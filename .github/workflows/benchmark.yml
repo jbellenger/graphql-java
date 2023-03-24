@@ -28,7 +28,7 @@ jobs:
         #  -rff (result format file) results.json: write output to results.json
         #  Arg : run classes that match the specified pattern
         run: >
-          RELEASE_VERSION=snapshot ./gradlew jmhJar && 
+          RELEASE_VERSION=snapshot ./gradlew --no-daemon jmhJar && 
           java -jar build/libs/graphql-java-snapshot-jmh.jar 
           -f 1
           -rf json
