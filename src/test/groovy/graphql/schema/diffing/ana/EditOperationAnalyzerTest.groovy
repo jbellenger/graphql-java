@@ -5,10 +5,10 @@ import graphql.schema.diffing.SchemaDiffing
 import spock.lang.Specification
 
 import static graphql.schema.diffing.ana.SchemaDifference.AppliedDirectiveDeletion
-import static graphql.schema.diffing.ana.SchemaDifference.AppliedDirectiveObjectFieldArgumentLocation
 import static graphql.schema.diffing.ana.SchemaDifference.AppliedDirectiveDirectiveArgumentLocation
-import static graphql.schema.diffing.ana.SchemaDifference.AppliedDirectiveObjectFieldLocation
 import static graphql.schema.diffing.ana.SchemaDifference.AppliedDirectiveInterfaceFieldArgumentLocation
+import static graphql.schema.diffing.ana.SchemaDifference.AppliedDirectiveObjectFieldArgumentLocation
+import static graphql.schema.diffing.ana.SchemaDifference.AppliedDirectiveObjectFieldLocation
 import static graphql.schema.diffing.ana.SchemaDifference.DirectiveAddition
 import static graphql.schema.diffing.ana.SchemaDifference.DirectiveArgumentAddition
 import static graphql.schema.diffing.ana.SchemaDifference.DirectiveArgumentDefaultValueModification
@@ -32,6 +32,7 @@ import static graphql.schema.diffing.ana.SchemaDifference.InputObjectFieldRename
 import static graphql.schema.diffing.ana.SchemaDifference.InputObjectFieldTypeModification
 import static graphql.schema.diffing.ana.SchemaDifference.InputObjectModification
 import static graphql.schema.diffing.ana.SchemaDifference.InterfaceAddition
+import static graphql.schema.diffing.ana.SchemaDifference.InterfaceDeletion
 import static graphql.schema.diffing.ana.SchemaDifference.InterfaceFieldAddition
 import static graphql.schema.diffing.ana.SchemaDifference.InterfaceFieldArgumentAddition
 import static graphql.schema.diffing.ana.SchemaDifference.InterfaceFieldArgumentDefaultValueModification
@@ -1917,7 +1918,6 @@ class EditOperationAnalyzerTest extends Specification {
         when:
         def changes = calcDiff(oldSdl, newSdl)
         then:
-        true
         changes.inputObjectDifferences["Echo"] instanceof InputObjectModification
         def diff = changes.inputObjectDifferences["Echo"] as InputObjectModification
 
@@ -1935,6 +1935,242 @@ class EditOperationAnalyzerTest extends Specification {
         def directiveDeletion = diff.getDetails(AppliedDirectiveDeletion)
         directiveDeletion.size() == 1
         directiveDeletion[0].name == "d"
+    }
+
+    def "object field description changed"() {
+        given:
+        def oldSdl = '''
+        type Query {
+            " Hello"
+            echo: String
+        }
+        '''
+        def newSdl = '''
+        type Query {
+            "Test "
+            echo: String
+        }
+        '''
+
+        when:
+        def changes = calcDiff(oldSdl, newSdl)
+
+        then:
+        // no changes
+        changes.objectDifferences["Query"] == null
+    }
+
+    def "interface field description changed"() {
+        given:
+        def oldSdl = '''
+        type Query {
+            node: Node
+        }
+        interface Node {
+            " Hello"
+            echo: String
+        }
+        '''
+        def newSdl = '''
+        type Query {
+            node: Node
+        }
+        interface Node {
+            "World"
+            echo: String
+        }
+        '''
+
+        when:
+        def changes = calcDiff(oldSdl, newSdl)
+
+        then:
+        // no changes
+        changes.interfaceDifferences["Node"] == null
+    }
+
+    def "interface deleted with field argument"() {
+        given:
+        def oldSdl = '''
+        type Query {
+            node: Node
+        }
+        interface Node {
+            echo(test: String): String
+        }
+        '''
+        def newSdl = '''
+        type Query {
+            node: ID
+        }
+        '''
+
+        when:
+        def changes = calcDiff(oldSdl, newSdl)
+
+        then:
+        changes.interfaceDifferences["Node"] instanceof InterfaceDeletion
+    }
+
+    def "object deleted with field argument"() {
+        given:
+        def oldSdl = '''
+        type Query {
+            node: Node
+        }
+        type Node {
+            echo(test: String): String
+        }
+        '''
+        def newSdl = '''
+        type Query {
+            node: ID
+        }
+        '''
+
+        when:
+        def changes = calcDiff(oldSdl, newSdl)
+
+        then:
+        changes.objectDifferences["Node"] instanceof ObjectDeletion
+    }
+
+    def "directive deleted with argument"() {
+        given:
+        def oldSdl = '''
+        type Query {
+            node: String
+        }
+        directive @test(message: String) on FIELD
+        '''
+        def newSdl = '''
+        type Query {
+            node: String
+        }
+        '''
+
+        when:
+        def changes = calcDiff(oldSdl, newSdl)
+
+        then:
+        changes.directiveDifferences["test"] instanceof DirectiveDeletion
+    }
+
+    def "interface added with field argument"() {
+        given:
+        def oldSdl = '''
+        type Query {
+            node: ID
+        }
+        '''
+        def newSdl = '''
+        type Query {
+            node: Node
+        }
+        interface Node {
+            echo(test: String): String
+        }
+        '''
+
+        when:
+        def changes = calcDiff(oldSdl, newSdl)
+
+        then:
+        changes.interfaceDifferences["Node"] instanceof InterfaceAddition
+    }
+
+    def "object added with field argument"() {
+        given:
+        def oldSdl = '''
+        type Query {
+            node: ID
+        }
+        '''
+        def newSdl = '''
+        type Query {
+            node: Node
+        }
+        type Node {
+            echo(test: String): String
+        }
+        '''
+
+        when:
+        def changes = calcDiff(oldSdl, newSdl)
+
+        then:
+        changes.objectDifferences["Node"] instanceof ObjectAddition
+    }
+
+    def "directive added with argument"() {
+        given:
+        def oldSdl = '''
+        type Query {
+            node: String
+        }
+        '''
+        def newSdl = '''
+        type Query {
+            node: String
+        }
+        directive @test(message: String) on FIELD
+        '''
+
+        when:
+        def changes = calcDiff(oldSdl, newSdl)
+
+        then:
+        changes.directiveDifferences["test"] instanceof DirectiveAddition
+    }
+
+    def "delete object with applied directive on field"() {
+        given:
+        def oldSdl = '''
+        type Query {
+            user(id: ID!): User
+        }
+        directive @id(type: String, owner: String) on FIELD_DEFINITION
+        type User {
+            id: ID! @id(type: "user", owner: "profiles")
+        }
+        '''
+        def newSdl = '''
+        type Query {
+            echo: String
+        }
+        directive @id(type: String, owner: String) on FIELD_DEFINITION
+        '''
+
+        when:
+        def changes = calcDiff(oldSdl, newSdl)
+
+        then:
+        changes.objectDifferences["User"] instanceof ObjectDeletion
+    }
+
+    def "delete interface with applied directive on field"() {
+        given:
+        def oldSdl = '''
+        type Query {
+            user(id: ID!): User
+        }
+        directive @id(type: String, owner: String) on FIELD_DEFINITION
+        interface User {
+            id: ID! @id(type: "user", owner: "profiles")
+        }
+        '''
+        def newSdl = '''
+        type Query {
+            echo: String
+        }
+        directive @id(type: String, owner: String) on FIELD_DEFINITION
+        '''
+
+        when:
+        def changes = calcDiff(oldSdl, newSdl)
+
+        then:
+        changes.interfaceDifferences["User"] instanceof InterfaceDeletion
     }
 
     EditOperationAnalysisResult calcDiff(
