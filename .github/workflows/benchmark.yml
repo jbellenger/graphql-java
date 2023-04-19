@@ -7,8 +7,13 @@ on:
   workflow_dispatch:
     inputs:
       benchmarks_to_run:
-        description: Space-separated list of name patterns of benchmarks that should be run. If blank, all tests will be run.
+        description: >
+          Space-separated list of name patterns of benchmarks that should be run. 
+          Examples:"IntMap", "AddError ListBenchmark"
+          If blank, all tests will be run.
         required: false
+        # JMB TODO: tidy
+        default: AddError ListBenchmark
   
 jobs:
   runJmh:
@@ -17,10 +22,11 @@ jobs:
     steps:
       - uses: actions/checkout@v1
       - uses: gradle/wrapper-validation-action@v1
-      - name: Set up JDK 1.8
-        uses: actions/setup-java@v1
+      - name: Set up JDK 11
+        uses: actions/setup-java@v3
         with:
           java-version: '11'
+          distribution: 'corretto'
       - name: run
         # jmh options:
         #  -f (fork) = 1: run each benchmark in a forked process, once
