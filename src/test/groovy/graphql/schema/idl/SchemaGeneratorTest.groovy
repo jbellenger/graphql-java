@@ -1,6 +1,5 @@
 package graphql.schema.idl
 
-
 import graphql.TestUtil
 import graphql.introspection.Introspection
 import graphql.language.Node
@@ -38,6 +37,7 @@ import java.util.function.UnaryOperator
 
 import static graphql.Scalars.GraphQLBoolean
 import static graphql.Scalars.GraphQLFloat
+import static graphql.Scalars.GraphQLID
 import static graphql.Scalars.GraphQLInt
 import static graphql.Scalars.GraphQLString
 import static graphql.language.AstPrinter.printAst
@@ -2535,5 +2535,38 @@ class SchemaGeneratorTest extends Specification {
         then:
         newSchema.getDirectives().findAll { it.name == "skip" }.size() == 1
         newSchema.getDirectives().findAll { it.name == "include" }.size() == 1
+    }
+
+    def "built-in scalars can be modified"() {
+        when:
+            def scalars = [
+                GraphQLBoolean,
+                GraphQLFloat,
+                GraphQLID,
+                GraphQLInt,
+                GraphQLString,
+            ]
+
+        then:
+            scalars.forEach {
+                def modifiedType = GraphQLScalarType.newScalar(it)
+                        .description("TEST DESCRIPTION")
+                        .build()
+
+                def wiring = RuntimeWiring.newRuntimeWiring()
+                        .scalar(modifiedType)
+                        .build()
+
+                def sdl = """
+                  type Query {
+                    field: ${modifiedType.name}
+                  }
+                """
+
+                def schema = TestUtil.schema(sdl, wiring)
+                def schemaType = schema.getType(modifiedType.name)
+                schemaType == it
+                schemaType.description == "TEST DESCRIPTION"
+            }
     }
 }
