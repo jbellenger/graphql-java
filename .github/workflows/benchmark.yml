@@ -13,6 +13,7 @@ on:
           If blank, all tests will be run.
         required: false
         # JMB TODO: tidy
+        # JMB TODO: these don't get used on push
         default: AddError ListBenchmark
   
 jobs:
@@ -39,4 +40,4 @@ jobs:
           -f 1
           -rf json
           -rff results.json
-          ${{ github.events.inputs.benchmarks_to_run }}
+          "${{ github.events.inputs.benchmarks_to_run }}"
