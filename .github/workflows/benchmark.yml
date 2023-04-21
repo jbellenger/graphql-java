@@ -37,23 +37,26 @@ jobs:
       - name: 'Set up Cloud SDK'
         uses: 'google-github-actions/setup-gcloud@v1'
 
-      # JMB TODO: placeholder, just testing auth
-      - name: 'Use gcloud CLI'
-        run: 'gcloud info'
-      
       - name: run
         # jmh options:
         #  -f (fork) = 1: run each benchmark in a forked process, once
         #  -rf (result format) json: return json output
         #  -rff (result format file) results.json: write output to results.json
         #  Arg : run classes that match the specified pattern
+        #
+        # JMB TODO
+        # "${{ github.events.inputs.benchmarks_to_run }}"
         run: >
           RELEASE_VERSION=snapshot ./gradlew --no-daemon jmhJar && 
           java -jar build/libs/graphql-java-snapshot-jmh.jar 
           -f 1
           -rf json
           -rff results.json
-          "${{ github.events.inputs.benchmarks_to_run }}"
+          AddError
+         
+        
+
       - name: post-results
         run: >
-          echo JMB TODO
+          ROW_FILE=$(scripts/package-jmh-result.sh ./results.json)
+          bq --dataset_id=gj-perf:test_results load --source_format=NEWLINE_DELIMITED_JSON runs "$ROW_FILE"
