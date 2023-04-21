@@ -8,8 +8,8 @@ on:
     inputs:
       benchmarks_to_run:
         description: >
-          Space-separated list of name patterns of benchmarks that should be run. 
-          Examples:"IntMap", "AddError ListBenchmark"
+          Comma-separated regex of benchmark names (either class or method names work) that should be run. 
+          Examples:"IntMap", "Int.*,Bench.*"
           If blank, all tests will be run.
         required: false
         # JMB TODO: tidy
@@ -28,6 +28,18 @@ jobs:
         with:
           java-version: '11'
           distribution: 'corretto'
+			- id: 'gcp auth'
+				uses: 'google-github-actions/auth@v1'
+				with:
+					credentials_json: '${{ secrets.GOOGLE_CLOUD_CREDS }}'
+
+			- name: 'Set up Cloud SDK'
+				uses: 'google-github-actions/setup-gcloud@v1'
+
+			# JMB TODO: placeholder, just testing auth
+			- name: 'Use gcloud CLI'
+				run: 'gcloud info'
+			
       - name: run
         # jmh options:
         #  -f (fork) = 1: run each benchmark in a forked process, once
@@ -41,3 +53,6 @@ jobs:
           -rf json
           -rff results.json
           "${{ github.events.inputs.benchmarks_to_run }}"
+      - name: post-results
+        run: >
+          echo JMB TODO
