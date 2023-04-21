@@ -29,8 +29,8 @@ jobs:
           java-version: '11'
           distribution: 'corretto'
 
-			- name: 'gcp auth'
-				uses: 'google-github-actions/auth@v1'
+			- name: gcp auth
+				uses: google-github-actions/auth@v1
 				with:
 					credentials_json: '${{ secrets.GOOGLE_CLOUD_CREDS }}'
 
