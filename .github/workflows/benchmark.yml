@@ -58,7 +58,7 @@ jobs:
 
       - name: post-results
         run: >
-          ROW_FILE=$(scripts/package-jmh-result.sh ./results.json)
+          ROW_FILE=$(scripts/pack-jmh-result.sh ./results.json)
           # JMB TODO: temp
           echo "Uploading ROW_FILE at $ROW_FILE"
           echo "Contents:"
