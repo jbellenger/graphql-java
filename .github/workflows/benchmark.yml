@@ -54,11 +54,11 @@ jobs:
           -rff results.json
           AddError
          
-        
 
       - name: post-results
-        run:
+        run: |
           ROW_FILE=$(scripts/pack-jmh-result.sh ./results.json)
+
           echo "Uploading ROW_FILE at $ROW_FILE"
           echo "Contents:"
           cat $ROW_FILE
