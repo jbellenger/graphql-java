@@ -62,5 +62,8 @@ jobs:
           echo "Uploading ROW_FILE at $ROW_FILE"
           echo "Contents:"
           cat $ROW_FILE
+          
+          echo "WHOAMI?"
+          gcloud auth list
 
           bq --dataset_id=gj-perf:test_results load --source_format=NEWLINE_DELIMITED_JSON runs "$ROW_FILE"
