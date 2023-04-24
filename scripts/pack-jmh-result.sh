@@ -12,13 +12,15 @@ fi
 OUTPUT=$(dirname "$RESULTS_FILE")/row.json
 
 JSON=$(cat $RESULTS_FILE | jq -c '.[0]')
-GITSHA=$(git rev-parse HEAD)
+GIT_SHA=$(git rev-parse HEAD)
+GIT_BRANCH=$(git branch --show-current)
 STAMP=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
 
 
 DOC=$(cat <<EOT
 {
-  "gitsha": "${GITSHA}",
+  "gitsha": "${GIT_SHA}",
+  "branch": "${GIT_BRANCH}",
   "jmh_json": ${JSON},
   "stamp": "${STAMP}"
 }

@@ -12,9 +12,6 @@ on:
           Examples:"IntMap", "Int.*,Bench.*"
           If blank, all tests will be run.
         required: false
-        # JMB TODO: tidy
-        # JMB TODO: these don't get used on push
-        default: AddError ListBenchmark
   
 jobs:
   runJmh:
@@ -52,18 +49,9 @@ jobs:
           -f 1
           -rf json
           -rff results.json
-          AddError
-         
+          "${{ github.events.inputs.benchmarks_to_run }}"
 
       - name: post-results
         run: |
           ROW_FILE=$(scripts/pack-jmh-result.sh ./results.json)
-
-          echo "Uploading ROW_FILE at $ROW_FILE"
-          echo "Contents:"
-          cat $ROW_FILE
-          
-          echo "WHOAMI?"
-          gcloud auth list
-
           bq --dataset_id=gj-perf:test_results load --source_format=NEWLINE_DELIMITED_JSON runs "$ROW_FILE"
