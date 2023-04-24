@@ -49,9 +49,9 @@ jobs:
           -f 1
           -rf json
           -rff results.json
-          "${{ github.events.inputs.benchmarks_to_run }}"
+          .*Access.*
 
       - name: post-results
         run: |
-          ROW_FILE=$(scripts/pack-jmh-result.sh ./results.json)
-          bq --dataset_id=gj-perf:test_results load --source_format=NEWLINE_DELIMITED_JSON runs "$ROW_FILE"
+          ROWS_FILE=$(scripts/pack-jmh-result.sh ./results.json)
+          bq --dataset_id=gj-perf:test_results load --source_format=NEWLINE_DELIMITED_JSON runs "$ROWS_FILE"
