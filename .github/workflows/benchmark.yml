@@ -49,7 +49,7 @@ jobs:
           -f 1
           -rf json
           -rff results.json
-          .*Access.*
+          "${{ github.events.inputs.benchmarks_to_run }}"
 
       - name: post-results
         run: |
