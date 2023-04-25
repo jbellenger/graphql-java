@@ -15,7 +15,9 @@ on:
   
 jobs:
   runJmh:
-    if: github.repository == 'graphql-java/graphql-java'
+    # JMB TODO: maybe re-enable this requirement, though it makes it difficult to develop in a fork
+    # Maybe it should work if a repo has the right secrets defined
+    # if: github.repository == 'graphql-java/graphql-java'
     runs-on: ubuntu-latest
     # JMB TODO: find a way to limit the ability of rando forks to publish
     steps:
