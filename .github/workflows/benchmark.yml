@@ -15,6 +15,7 @@ on:
   
 jobs:
   runJmh:
+    if: github.repository == 'graphql-java/graphql-java'
     runs-on: ubuntu-latest
     # JMB TODO: find a way to limit the ability of rando forks to publish
     steps:
@@ -43,6 +44,7 @@ jobs:
         #
         # JMB TODO
         # "${{ github.events.inputs.benchmarks_to_run }}"
+        # AddError
         run: >
           RELEASE_VERSION=snapshot ./gradlew --no-daemon jmhJar && 
           java -jar build/libs/graphql-java-snapshot-jmh.jar 

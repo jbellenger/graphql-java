@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 set -e
 
@@ -6,11 +6,11 @@ SUITE=$1
 RESULTS_FILE=$2
 
 printUsageAndExit() {
-  echo "Usage: $0 <suite-name> <path-to-jmh-results>"
+  echo "Usage: $0 <suite-name> <path-to-jmh-results>" 1>&2
   exit 1
 }
 
-if [ -z "${COMPONENT}" ]; then
+if [ -z "${SUITE}" ]; then
   printUsageAndExit
 fi
 
