@@ -2,15 +2,25 @@
 
 set -e
 
-RESULTS_FILE=$1
+SUITE=$1
+RESULTS_FILE=$2
 
-if [ ! -e "$RESULTS_FILE" -o ! -f "$RESULTS_FILE" ]; then
-  echo "Could not load results file. Usage: $0 <path-to-jmh-results.json>"
+printUsageAndExit() {
+  echo "Usage: $0 <suite-name> <path-to-jmh-results>"
   exit 1
+}
+
+if [ -z "${COMPONENT}" ]; then
+  printUsageAndExit
 fi
 
-OUTPUT=$(dirname "$RESULTS_FILE")/rows.json
+if [ ! -e "$RESULTS_FILE" -o ! -f "$RESULTS_FILE" ]; then
+  printUsageAndExit
+fi
 
+OUTPUT=$(mktemp -t jmh-result-rows)
+
+ID=$(uuidgen)
 JSON=$(cat $RESULTS_FILE | jq -c '.[0]')
 GIT_SHA=$(git rev-parse HEAD)
 GIT_BRANCH=$(git branch --show-current)
@@ -22,10 +32,20 @@ STAMP=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
 # We can work around this by inserting a row for each benchmark result in that
 # array.
 
-JQ_RUN_TEMPLATE="{git_sha: \"${GIT_SHA}\", git_branch: \"${GIT_BRANCH}\", stamp: \"${STAMP}\", jmh_json: .}"
+JQ_RUN_TEMPLATE=$(cat <<EOT
+  {
+    id: "${ID}", 
+    suite: "${SUITE}",
+    git_sha: "${GIT_SHA}", 
+    git_branch: "${GIT_BRANCH}", 
+    stamp: "${STAMP}", 
+    jmh_json: .
+  }
+EOT
+)
 
 # For each row in the jmh result array, format it with some metadata from its
 # test run and emit it as a line in a file.
-cat $RESULTS_FILE | jq -c ".[] | $JQ_RUN_TEMPLATE" > $OUTPUT
+cat $RESULTS_FILE | jq -c ".[] | ${JQ_RUN_TEMPLATE}" > $OUTPUT
 
 echo $OUTPUT

@@ -53,5 +53,5 @@ jobs:
 
       - name: post-results
         run: |
-          ROWS_FILE=$(scripts/pack-jmh-result.sh ./results.json)
+          ROWS_FILE=$(.github/workflows/pack-jmh-result.sh graphql-java ./results.json)
           bq --dataset_id=gj-perf:test_results load --source_format=NEWLINE_DELIMITED_JSON runs "$ROWS_FILE"
