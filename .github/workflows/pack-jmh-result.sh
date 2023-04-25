@@ -18,7 +18,7 @@ if [ ! -e "$RESULTS_FILE" -o ! -f "$RESULTS_FILE" ]; then
   printUsageAndExit
 fi
 
-OUTPUT=$(mktemp -t jmh-result-rows)
+OUTPUT=$(mktemp -t jmh-result-rows-XXXX)
 
 ID=$(uuidgen)
 JSON=$(cat $RESULTS_FILE | jq -c '.[0]')
