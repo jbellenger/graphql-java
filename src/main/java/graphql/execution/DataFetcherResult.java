@@ -1,7 +1,6 @@
 package graphql.execution;
 
 import com.google.common.collect.ImmutableList;
-import graphql.DeprecatedAt;
 import graphql.ExecutionResult;
 import graphql.GraphQLError;
 import graphql.Internal;
@@ -12,6 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 import static graphql.Assert.assertNotNull;
 
@@ -48,8 +48,7 @@ public class DataFetcherResult<T> {
      * @deprecated use the {@link #newResult()} builder instead
      */
     @Internal
-    @Deprecated
-    @DeprecatedAt("2019-01-11")
+    @Deprecated(since = "2019-01-11")
     public DataFetcherResult(T data, List<GraphQLError> errors) {
         this(data, errors, null, null);
     }
@@ -119,6 +118,23 @@ public class DataFetcherResult<T> {
         Builder<T> builder = new Builder<>(this);
         builderConsumer.accept(builder);
         return builder.build();
+    }
+
+    /**
+     * Transforms the data of the current DataFetcherResult using the provided function.
+     * All other values are left unmodified.
+     *
+     * @param transformation the transformation that should be applied to the data
+     * @param <R>            the result type
+     *
+     * @return a new instance with where the data value has been transformed
+     */
+    public <R> DataFetcherResult<R> map(Function<T, R> transformation) {
+        return new Builder<>(transformation.apply(this.data))
+                .errors(this.errors)
+                .extensions(this.extensions)
+                .localContext(this.localContext)
+                .build();
     }
 
     /**

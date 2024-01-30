@@ -1,7 +1,11 @@
 package graphql.schema.diffing.ana
 
 import graphql.TestUtil
+import graphql.schema.diffing.Edge
+import graphql.schema.diffing.EditOperation
 import graphql.schema.diffing.SchemaDiffing
+import graphql.schema.diffing.SchemaGraph
+import graphql.schema.diffing.Vertex
 import spock.lang.Specification
 
 import static graphql.schema.diffing.ana.SchemaDifference.AppliedDirectiveDeletion
@@ -1009,7 +1013,7 @@ class EditOperationAnalyzerTest extends Specification {
         interface Node2 {
             id: ID!
         }
-        type Foo implements Node2 & NewI{
+        type Foo implements Node2 & NewI {
             id: ID!
             hello: String
         }
@@ -2892,6 +2896,257 @@ class EditOperationAnalyzerTest extends Specification {
 
         then:
         changes.directiveDifferences.isEmpty()
+    }
+
+    def "traversal order puts field changes before arguments"() {
+        def objectOld = new Vertex(SchemaGraph.OBJECT, "target-1")
+        objectOld.add("name", "Obey")
+        def objectNew = new Vertex(SchemaGraph.OBJECT, "target-1")
+        objectNew.add("name", "Ob")
+        def changeObjectVertex = EditOperation.changeVertex(
+                "Change object",
+                objectOld,
+                objectNew,
+        )
+
+        def newField = new Vertex(SchemaGraph.FIELD, "target-1")
+        newField.add("name", "fried")
+        def insertNewFieldVertex = EditOperation.insertVertex(
+                "Insert new field",
+                Vertex.newIsolatedNode("source-isolated-Field-1"),
+                newField,
+        )
+
+        def newArgument = new Vertex(SchemaGraph.ARGUMENT, "target-1")
+        newArgument.add("name", "alone")
+        def insertNewArgumentVertex = EditOperation.insertVertex(
+                "Insert argument",
+                Vertex.newIsolatedNode("source-isolated-Argument-1"),
+                newArgument,
+        )
+
+        def insertNewFieldEdge = EditOperation.insertEdge(
+                "Insert Object -> Field Edge",
+                new Edge(objectNew, newField),
+        )
+
+        def insertNewArgumentEdge = EditOperation.insertEdge(
+                "Insert Field -> Argument Edge",
+                new Edge(newField, newArgument),
+        )
+
+        when:
+        def result = EditOperationAnalyzer.getTraversalOrder([
+                insertNewArgumentVertex,
+                insertNewFieldEdge,
+                insertNewArgumentEdge,
+                changeObjectVertex,
+                insertNewFieldVertex,
+        ])
+
+        then:
+        result == [
+                changeObjectVertex,
+                insertNewFieldVertex,
+                insertNewArgumentVertex,
+                insertNewFieldEdge,
+                insertNewArgumentEdge,
+        ]
+    }
+
+    def "less fields in the renamed object"() {
+        given:
+        def oldSdl = '''
+        type Query {
+            user(id: ID!): User
+        }
+        type User {
+            id: String
+            name: String
+            account: String
+            email: Boolean
+            age: Int
+        }
+        '''
+        def newSdl = '''
+        type Query {
+            account(id: ID!): Account
+        }
+        type Account {
+            id: String
+            name: String
+            yearsOld: Int
+        }
+        '''
+
+        when:
+        def changes = calcDiff(oldSdl, newSdl)
+
+        then:
+        changes.objectDifferences["User"] instanceof ObjectModification
+        def userModification = changes.objectDifferences["User"] as ObjectModification
+        userModification.isNameChanged()
+        userModification.oldName == "User"
+        userModification.newName == "Account"
+
+        def deletions = userModification.getDetails(ObjectFieldDeletion)
+        deletions.size() == 2
+        deletions.collect { it.name }.toSet() == ["account", "email"] as Set
+
+        def rename = userModification.getDetails(ObjectFieldRename)
+        rename.size() == 1
+        rename[0].oldName == "age"
+        rename[0].newName == "yearsOld"
+    }
+
+    def "two possible mappings for object rename where one has less fields"() {
+        given:
+        def oldSdl = '''
+        type Query {
+            user(id: ID!): User
+        }
+        type User {
+            id: String
+            name: String
+            account: String
+            email: String
+            age: Int
+        }
+        '''
+        def newSdl = '''
+        type Query {
+            account(id: ID!): Account
+        }
+        type Account {
+            yearsOld: Int
+        }
+        type Profile {
+            id: String
+            name: String
+            account: String
+            email: String
+            age: Int
+        }
+        '''
+
+        when:
+        def changes = calcDiff(oldSdl, newSdl)
+
+        then:
+        changes.objectDifferences["Account"] instanceof ObjectAddition
+
+        changes.objectDifferences["User"] instanceof ObjectModification
+        def userModification = changes.objectDifferences["User"] as ObjectModification
+        userModification.isNameChanged()
+        userModification.oldName == "User"
+        userModification.newName == "Profile"
+
+        userModification.details.isEmpty()
+    }
+
+    def "deleted field with fixed parent binding can map to isolated node"() {
+        given:
+        def oldSdl = '''
+            type Query {
+                notifications: NotificationQuery
+            }
+            type NotificationQuery {
+                notificationFeed(
+                    feedFilter: NotificationFeedFilter
+                    first: Int = 25
+                    after: String
+                ): NotificationGroupedConnection!
+                unseenNotificationCount(workspaceId: String, product: String): Int!
+            }
+            input NotificationFeedFilter {
+                workspaceId: String
+                productFilter: String
+                groupId: String
+            }
+            type NotificationItem {
+                notificationId: ID!
+                workspaceId: String
+            }
+            type NotificationGroupedItem {
+                groupId: ID!
+                groupSize: Int!
+                headNotification: NotificationItem!
+                childItems(first: Int, after: String): [NotificationItem!]
+            }
+            type NotificationGroupedConnection {
+                nodes: [NotificationGroupedItem!]!
+            }
+        '''
+        def newSdl = '''
+            type Query {
+                notifications: NotificationQuery
+            }
+            type NotificationQuery {
+                notificationFeed(
+                    filter: NotificationFilter
+                    first: Int = 25
+                    after: String
+                ): NotificationFeedConnection!
+                notificationGroup(
+                    groupId: String!
+                    filter: NotificationFilter
+                    first: Int = 25
+                    after: String
+                ): NotificationGroupConnection!
+                unseenNotificationCount(workspaceId: String, product: String): Int!
+            }
+            input NotificationFilter {
+                workspaceId: String
+                productFilter: String
+            }
+            type NotificationEntityModel{
+                objectId: String!
+                containerId: String
+                workspaceId: String
+                cloudId: String
+            }
+            type NotificationItem {
+                notificationId: ID!
+                entityModel: NotificationEntityModel
+                workspaceId: String
+            }
+            type NotificationHeadItem {
+                groupId: ID!
+                groupSize: Int!
+                readStates: [String]!
+                additionalTypes: [String!]!
+                headNotification: NotificationItem!
+                endCursor: String
+            }
+            type NotificationFeedConnection {
+                nodes: [NotificationHeadItem!]!
+            }
+            type NotificationGroupConnection {
+                nodes: [NotificationItem!]!
+            }
+        '''
+
+        when:
+        def changes = calcDiff(oldSdl, newSdl)
+
+        then:
+        changes.objectDifferences["NotificationGroupedItem"] === changes.objectDifferences["NotificationHeadItem"]
+        changes.objectDifferences["NotificationGroupedConnection"] === changes.objectDifferences["NotificationFeedConnection"]
+        changes.objectDifferences["NotificationGroupedItem"] instanceof ObjectModification
+        changes.objectDifferences["NotificationGroupedConnection"] instanceof ObjectModification
+        changes.objectDifferences["NotificationEntityModel"] instanceof ObjectAddition
+        changes.objectDifferences["NotificationGroupConnection"] instanceof ObjectAddition
+        changes.objectDifferences["NotificationItem"] instanceof ObjectModification
+        changes.objectDifferences["NotificationQuery"] instanceof ObjectModification
+
+        changes.inputObjectDifferences["NotificationFeedFilter"] === changes.inputObjectDifferences["NotificationFilter"]
+        changes.inputObjectDifferences["NotificationFeedFilter"] instanceof InputObjectModification
+
+        def notificationFeedFilterChange = changes.inputObjectDifferences["NotificationFeedFilter"] as InputObjectModification
+        notificationFeedFilterChange.details.size() == 1
+        notificationFeedFilterChange.details[0] instanceof InputObjectFieldDeletion
+        def groupIdInputObjectFieldDeletion = notificationFeedFilterChange.details[0] as InputObjectFieldDeletion
+        groupIdInputObjectFieldDeletion.name == "groupId"
     }
 
     EditOperationAnalysisResult calcDiff(

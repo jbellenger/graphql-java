@@ -40,9 +40,6 @@ import graphql.schema.GraphQLSchema;
 import graphql.schema.GraphQLType;
 import graphql.schema.LightDataFetcher;
 import graphql.util.FpKit;
-import graphql.util.LogKit;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -125,9 +122,6 @@ import static java.util.concurrent.CompletableFuture.completedFuture;
 @PublicSpi
 @SuppressWarnings("FutureReturnValueIgnored")
 public abstract class ExecutionStrategy {
-
-    private static final Logger log = LoggerFactory.getLogger(ExecutionStrategy.class);
-    private static final Logger logNotSafe = LogKit.getNotPrivacySafeLogger(ExecutionStrategy.class);
 
     protected final FieldCollector fieldCollector = new FieldCollector();
     protected final ExecutionStepInfoFactory executionStepInfoFactory = new ExecutionStepInfoFactory();
@@ -291,9 +285,10 @@ public abstract class ExecutionStrategy {
                 .handle((result, exception) -> {
                     fetchCtx.onCompleted(result, exception);
                     if (exception != null) {
-                        return handleFetchingException(executionContext, dataFetchingEnvironment.get(), exception);
+                        return handleFetchingException(dataFetchingEnvironment.get(), exception);
                     } else {
-                        return CompletableFuture.completedFuture(result);
+                        // we can simply return the fetched value CF and avoid a allocation
+                        return fetchedValue;
                     }
                 })
                 .thenCompose(Function.identity())
@@ -311,9 +306,6 @@ public abstract class ExecutionStrategy {
             }
             fetchedValue = Async.toCompletableFuture(fetchedValueRaw);
         } catch (Exception e) {
-            if (logNotSafe.isDebugEnabled()) {
-                logNotSafe.debug(String.format("'%s', field '%s' fetch threw exception", executionContext.getExecutionId(), parameters.getPath()), e);
-            }
             fetchedValue = Async.exceptionallyCompletedFuture(e);
         }
         return fetchedValue;
@@ -331,7 +323,7 @@ public abstract class ExecutionStrategy {
         if (result instanceof DataFetcherResult) {
             DataFetcherResult<?> dataFetcherResult = (DataFetcherResult<?>) result;
             executionContext.addErrors(dataFetcherResult.getErrors());
-            addExtensionsIfPresent(executionContext,dataFetcherResult);
+            addExtensionsIfPresent(executionContext, dataFetcherResult);
 
             Object localContext = dataFetcherResult.getLocalContext();
             if (localContext == null) {
@@ -363,9 +355,9 @@ public abstract class ExecutionStrategy {
         }
     }
 
-    protected <T> CompletableFuture<T> handleFetchingException(ExecutionContext executionContext,
-                                                               DataFetchingEnvironment environment,
-                                                               Throwable e) {
+    protected <T> CompletableFuture<T> handleFetchingException(
+            DataFetchingEnvironment environment,
+            Throwable e) {
         DataFetcherExceptionHandlerParameters handlerParameters = DataFetcherExceptionHandlerParameters.newExceptionParameters()
                 .dataFetchingEnvironment(environment)
                 .exception(e)
@@ -426,10 +418,6 @@ public abstract class ExecutionStrategy {
                         .localContext(fetchedValue.getLocalContext())
                         .nonNullFieldValidator(nonNullableFieldValidator)
         );
-
-        if (log.isDebugEnabled()) {
-            log.debug("'{}' completing field '{}'...", executionContext.getExecutionId(), executionStepInfo.getPath());
-        }
 
         FieldValueInfo fieldValueInfo = completeValue(executionContext, newParameters);
 
@@ -492,9 +480,7 @@ public abstract class ExecutionStrategy {
 
     private void handleUnresolvedTypeProblem(ExecutionContext context, ExecutionStrategyParameters parameters, UnresolvedTypeException e) {
         UnresolvedTypeError error = new UnresolvedTypeError(parameters.getPath(), parameters.getExecutionStepInfo(), e);
-        logNotSafe.warn(error.getMessage(), e);
         context.addError(error);
-
     }
 
     /**
@@ -569,19 +555,16 @@ public abstract class ExecutionStrategy {
         for (Object item : iterableValues) {
             ResultPath indexedPath = parameters.getPath().segment(index);
 
-            ExecutionStepInfo stepInfoForListElement = executionStepInfoFactory.newExecutionStepInfoForListElement(executionStepInfo, index);
+            ExecutionStepInfo stepInfoForListElement = executionStepInfoFactory.newExecutionStepInfoForListElement(executionStepInfo, indexedPath);
 
             NonNullableFieldValidator nonNullableFieldValidator = new NonNullableFieldValidator(executionContext, stepInfoForListElement);
 
-            int finalIndex = index;
             FetchedValue value = unboxPossibleDataFetcherResult(executionContext, parameters, item);
 
             ExecutionStrategyParameters newParameters = parameters.transform(builder ->
                     builder.executionStepInfo(stepInfoForListElement)
                             .nonNullFieldValidator(nonNullableFieldValidator)
-                            .listSize(size.orElse(-1)) // -1 signals that we don't know the size
                             .localContext(value.getLocalContext())
-                            .currentListIndex(finalIndex)
                             .path(indexedPath)
                             .source(value.getFetchedValue())
             );
@@ -589,7 +572,7 @@ public abstract class ExecutionStrategy {
             index++;
         }
 
-        CompletableFuture<List<ExecutionResult>> resultsFuture = Async.each(fieldValueInfos, (item, i) -> item.getFieldValue());
+        CompletableFuture<List<ExecutionResult>> resultsFuture = Async.each(fieldValueInfos, FieldValueInfo::getFieldValue);
 
         CompletableFuture<ExecutionResult> overallResult = new CompletableFuture<>();
         completeListCtx.onDispatched(overallResult);
@@ -685,6 +668,7 @@ public abstract class ExecutionStrategy {
                 .objectType(resolvedObjectType)
                 .fragments(executionContext.getFragmentsByName())
                 .variables(executionContext.getCoercedVariables().toMap())
+                .graphQLContext(executionContext.getGraphQLContext())
                 .build();
 
         MergedSelectionSet subFields = fieldCollector.collectFields(collectorParameters, parameters.getField());
@@ -707,24 +691,8 @@ public abstract class ExecutionStrategy {
     @SuppressWarnings("SameReturnValue")
     private Object handleCoercionProblem(ExecutionContext context, ExecutionStrategyParameters parameters, CoercingSerializeException e) {
         SerializationError error = new SerializationError(parameters.getPath(), e);
-        logNotSafe.warn(error.getMessage(), e);
         context.addError(error);
-
-
         return null;
-    }
-
-    /**
-     * Converts an object that is known to should be an Iterable into one
-     *
-     * @param result the result object
-     *
-     * @return an Iterable from that object
-     *
-     * @throws java.lang.ClassCastException if it's not an Iterable
-     */
-    protected Iterable<Object> toIterable(Object result) {
-        return FpKit.toIterable(result);
     }
 
     protected GraphQLObjectType resolveType(ExecutionContext executionContext, ExecutionStrategyParameters parameters, GraphQLType fieldType) {
@@ -748,7 +716,6 @@ public abstract class ExecutionStrategy {
 
     private void handleTypeMismatchProblem(ExecutionContext context, ExecutionStrategyParameters parameters, Object result) {
         TypeMismatchError error = new TypeMismatchError(parameters.getPath(), parameters.getExecutionStepInfo().getUnwrappedNonNullType());
-        logNotSafe.warn("{} got {}", error.getMessage(), result.getClass());
         context.addError(error);
     }
 

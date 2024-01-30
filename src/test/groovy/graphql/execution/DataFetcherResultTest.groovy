@@ -7,7 +7,7 @@ import spock.lang.Specification
 
 class DataFetcherResultTest extends Specification {
 
-    def error1 = new ValidationError(ValidationErrorType.DuplicateOperationName)
+    def error1 = ValidationError.newValidationError().validationErrorType(ValidationErrorType.DuplicateOperationName).build()
     def error2 = new InvalidSyntaxError([], "Boo")
 
     def "basic building"() {
@@ -72,6 +72,19 @@ class DataFetcherResultTest extends Specification {
         then:
         dfr.getExtensions() == null
 
+    }
+
+    def "mapping works"() {
+        when:
+        def original = DataFetcherResult.newResult().data("hello")
+                .errors([error1]).localContext("world")
+                .extensions([x: "y"]).build()
+        def result = original.map({ data -> data.length() })
+        then:
+        result.getData() == 5
+        result.getLocalContext() == "world"
+        result.getExtensions() == [x: "y"]
+        result.getErrors() == [error1]
     }
 
     def "transforming works"() {

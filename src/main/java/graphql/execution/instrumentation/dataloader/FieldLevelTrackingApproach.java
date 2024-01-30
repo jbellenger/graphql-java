@@ -10,8 +10,8 @@ import graphql.execution.instrumentation.InstrumentationContext;
 import graphql.execution.instrumentation.InstrumentationState;
 import graphql.execution.instrumentation.parameters.InstrumentationExecutionStrategyParameters;
 import graphql.execution.instrumentation.parameters.InstrumentationFieldFetchParameters;
+import graphql.util.LockKit;
 import org.dataloader.DataLoaderRegistry;
-import org.slf4j.Logger;
 
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -25,9 +25,10 @@ import java.util.function.Supplier;
 @Internal
 public class FieldLevelTrackingApproach {
     private final Supplier<DataLoaderRegistry> dataLoaderRegistrySupplier;
-    private final Logger log;
 
     private static class CallStack implements InstrumentationState {
+
+        private final LockKit.ReentrantLock lock = new LockKit.ReentrantLock();
 
         private final LevelMap expectedFetchCountPerLevel = new LevelMap();
         private final LevelMap fetchCountPerLevel = new LevelMap();
@@ -109,9 +110,8 @@ public class FieldLevelTrackingApproach {
         }
     }
 
-    public FieldLevelTrackingApproach(Logger log, Supplier<DataLoaderRegistry> dataLoaderRegistrySupplier) {
+    public FieldLevelTrackingApproach(Supplier<DataLoaderRegistry> dataLoaderRegistrySupplier) {
         this.dataLoaderRegistrySupplier = dataLoaderRegistrySupplier;
-        this.log = log;
     }
 
     public InstrumentationState createState() {
@@ -124,10 +124,10 @@ public class FieldLevelTrackingApproach {
         int parentLevel = path.getLevel();
         int curLevel = parentLevel + 1;
         int fieldCount = parameters.getExecutionStrategyParameters().getFields().size();
-        synchronized (callStack) {
+        callStack.lock.runLocked(() -> {
             callStack.increaseExpectedFetchCount(curLevel, fieldCount);
             callStack.increaseHappenedStrategyCalls(curLevel);
-        }
+        });
 
         return new ExecutionStrategyInstrumentationContext() {
             @Override
@@ -142,10 +142,9 @@ public class FieldLevelTrackingApproach {
 
             @Override
             public void onFieldValuesInfo(List<FieldValueInfo> fieldValueInfoList) {
-                boolean dispatchNeeded;
-                synchronized (callStack) {
-                    dispatchNeeded = handleOnFieldValuesInfo(fieldValueInfoList, callStack, curLevel);
-                }
+                boolean dispatchNeeded = callStack.lock.callLocked(() ->
+                        handleOnFieldValuesInfo(fieldValueInfoList, callStack, curLevel)
+                );
                 if (dispatchNeeded) {
                     dispatch();
                 }
@@ -153,9 +152,9 @@ public class FieldLevelTrackingApproach {
 
             @Override
             public void onFieldValuesException() {
-                synchronized (callStack) {
-                    callStack.increaseHappenedOnFieldValueCalls(curLevel);
-                }
+                callStack.lock.runLocked(() ->
+                        callStack.increaseHappenedOnFieldValueCalls(curLevel)
+                );
             }
         };
     }
@@ -187,19 +186,17 @@ public class FieldLevelTrackingApproach {
         CallStack callStack = (CallStack) rawState;
         ResultPath path = parameters.getEnvironment().getExecutionStepInfo().getPath();
         int level = path.getLevel();
-        return new InstrumentationContext<Object>() {
+        return new InstrumentationContext<>() {
 
             @Override
             public void onDispatched(CompletableFuture<Object> result) {
-                boolean dispatchNeeded;
-                synchronized (callStack) {
+                boolean dispatchNeeded = callStack.lock.callLocked(() -> {
                     callStack.increaseFetchCount(level);
-                    dispatchNeeded = dispatchIfNeeded(callStack, level);
-                }
+                    return dispatchIfNeeded(callStack, level);
+                });
                 if (dispatchNeeded) {
                     dispatch();
                 }
-
             }
 
             @Override
@@ -236,9 +233,6 @@ public class FieldLevelTrackingApproach {
 
     void dispatch() {
         DataLoaderRegistry dataLoaderRegistry = getDataLoaderRegistry();
-        if (log.isDebugEnabled()) {
-            log.debug("Dispatching data loaders ({})", dataLoaderRegistry.getKeys());
-        }
         dataLoaderRegistry.dispatchAll();
     }
 

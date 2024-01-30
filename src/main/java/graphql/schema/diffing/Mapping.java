@@ -7,6 +7,7 @@ import graphql.Internal;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
@@ -20,6 +21,7 @@ import java.util.function.Consumer;
 public class Mapping {
 
 
+    private final Map<Vertex, Vertex> fixedParentRestrictions;
     private final BiMap<Vertex, Vertex> fixedMappings;
     private final List<Vertex> fixedSourceList;
     private final List<Vertex> fixedTargetList;
@@ -28,12 +30,14 @@ public class Mapping {
     private final List<Vertex> sourceList;
     private final List<Vertex> targetList;
 
-    private Mapping(BiMap<Vertex, Vertex> fixedMappings,
+    private Mapping(Map<Vertex, Vertex> fixedParentRestrictions,
+                    BiMap<Vertex, Vertex> fixedMappings,
                     List<Vertex> fixedSourceList,
                     List<Vertex> fixedTargetList,
                     BiMap<Vertex, Vertex> map,
                     List<Vertex> sourceList,
                     List<Vertex> targetList) {
+        this.fixedParentRestrictions = fixedParentRestrictions;
         this.fixedMappings = fixedMappings;
         this.fixedSourceList = fixedSourceList;
         this.fixedTargetList = fixedTargetList;
@@ -42,9 +46,26 @@ public class Mapping {
         this.targetList = targetList;
     }
 
-    public static Mapping newMapping(BiMap<Vertex, Vertex> fixedMappings, List<Vertex> fixedSourceList, List<Vertex> fixedTargetList) {
-        return new Mapping(fixedMappings, fixedSourceList, fixedTargetList, HashBiMap.create(), Collections.emptyList(), Collections.emptyList());
+    public static Mapping newMapping(Map<Vertex, Vertex> fixedParentRestrictions,
+                                     BiMap<Vertex, Vertex> fixedMappings,
+                                     List<Vertex> fixedSourceList,
+                                     List<Vertex> fixedTargetList) {
+        return new Mapping(
+                fixedParentRestrictions,
+                fixedMappings,
+                fixedSourceList,
+                fixedTargetList,
+                HashBiMap.create(),
+                Collections.emptyList(),
+                Collections.emptyList());
+    }
 
+    public boolean hasParentRestriction(Vertex v) {
+        return fixedParentRestrictions.containsKey(v);
+    }
+
+    public Vertex getParentRestriction(Vertex v) {
+        return fixedParentRestrictions.get(v);
     }
 
     public Vertex getSource(Vertex target) {
@@ -99,6 +120,10 @@ public class Mapping {
         return fixedMappings.size() + map.size();
     }
 
+    public int fixedSize() {
+        return fixedMappings.size();
+    }
+
     public int nonFixedSize() {
         return map.size();
     }
@@ -109,19 +134,19 @@ public class Mapping {
         this.targetList.add(target);
     }
 
-    public Mapping removeLastElement() {
+    public Mapping copyMappingWithLastElementRemoved() {
         HashBiMap<Vertex, Vertex> newMap = HashBiMap.create(map);
         newMap.remove(this.sourceList.get(this.sourceList.size() - 1));
         List<Vertex> newSourceList = new ArrayList<>(this.sourceList.subList(0, this.sourceList.size() - 1));
         List<Vertex> newTargetList = new ArrayList<>(this.targetList.subList(0, this.targetList.size() - 1));
-        return new Mapping(fixedMappings, fixedSourceList, fixedTargetList, newMap, newSourceList, newTargetList);
+        return new Mapping(fixedParentRestrictions, fixedMappings, fixedSourceList, fixedTargetList, newMap, newSourceList, newTargetList);
     }
 
     public Mapping copy() {
         HashBiMap<Vertex, Vertex> newMap = HashBiMap.create(map);
         List<Vertex> newSourceList = new ArrayList<>(this.sourceList);
         List<Vertex> newTargetList = new ArrayList<>(this.targetList);
-        return new Mapping(fixedMappings, fixedSourceList, fixedTargetList, newMap, newSourceList, newTargetList);
+        return new Mapping(fixedParentRestrictions, fixedMappings, fixedSourceList, fixedTargetList, newMap, newSourceList, newTargetList);
     }
 
     public Mapping extendMapping(Vertex source, Vertex target) {
@@ -131,7 +156,7 @@ public class Mapping {
         newSourceList.add(source);
         List<Vertex> newTargetList = new ArrayList<>(this.targetList);
         newTargetList.add(target);
-        return new Mapping(fixedMappings, fixedSourceList, fixedTargetList, newMap, newSourceList, newTargetList);
+        return new Mapping(fixedParentRestrictions, fixedMappings, fixedSourceList, fixedTargetList, newMap, newSourceList, newTargetList);
     }
 
     public void forEachTarget(Consumer<? super Vertex> action) {
@@ -151,5 +176,19 @@ public class Mapping {
 
     public void forEachNonFixedSourceAndTarget(BiConsumer<? super Vertex, ? super Vertex> consumer) {
         map.forEach(consumer);
+    }
+
+    public Mapping invert() {
+        BiMap<Vertex, Vertex> invertedFixedMappings = HashBiMap.create();
+        for (Vertex s : fixedMappings.keySet()) {
+            Vertex t = fixedMappings.get(s);
+            invertedFixedMappings.put(t, s);
+        }
+        BiMap<Vertex, Vertex> invertedMap = HashBiMap.create();
+        for (Vertex s : map.keySet()) {
+            Vertex t = map.get(s);
+            invertedMap.put(t, s);
+        }
+        return new Mapping(fixedParentRestrictions, invertedFixedMappings, fixedTargetList, fixedSourceList, invertedMap, targetList, sourceList);
     }
 }

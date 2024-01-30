@@ -33,7 +33,7 @@ class PropertyDataFetcherTest extends Specification {
                 .build()
     }
 
-    class SomeObject {
+    static class SomeObject {
         String value
     }
 
@@ -483,7 +483,7 @@ class PropertyDataFetcherTest extends Specification {
 
     }
 
-    class ProductDTO {
+    static class ProductDTO {
         String name
         String model
     }
@@ -537,7 +537,7 @@ class PropertyDataFetcherTest extends Specification {
     private static class Bar implements Foo {
         @Override
         String getSomething() {
-            return "bar";
+            return "bar"
         }
     }
 
@@ -561,5 +561,166 @@ class PropertyDataFetcherTest extends Specification {
 
         then:
         result == "bar"
+    }
+
+    def "issue 3247 - record like statics should not be used"() {
+        given:
+        def payload = new UpdateOrganizerSubscriptionPayload(true, new OrganizerSubscriptionError())
+        PropertyDataFetcher propertyDataFetcher = new PropertyDataFetcher("success")
+        def dfe = Mock(DataFetchingEnvironment)
+        dfe.getSource() >> payload
+        when:
+        def result = propertyDataFetcher.get(dfe)
+
+        then:
+        result == true
+
+        // repeat - should be cached
+        when:
+        result = propertyDataFetcher.get(dfe)
+
+        then:
+        result == true
+    }
+
+    def "issue 3247 - record like statics should not be found"() {
+        given:
+        def errorShape = new OrganizerSubscriptionError()
+        PropertyDataFetcher propertyDataFetcher = new PropertyDataFetcher("message")
+        def dfe = Mock(DataFetchingEnvironment)
+        dfe.getSource() >> errorShape
+        when:
+        def result = propertyDataFetcher.get(dfe)
+
+        then:
+        result == null // not found as its a static recordLike() method
+
+        // repeat - should be cached
+        when:
+        result = propertyDataFetcher.get(dfe)
+
+        then:
+        result == null
+    }
+
+    def "issue 3247 - getter statics should be found"() {
+        given:
+        def objectInQuestion = new BarClassWithStaticProperties()
+        PropertyDataFetcher propertyDataFetcher = new PropertyDataFetcher("foo")
+        def dfe = Mock(DataFetchingEnvironment)
+        dfe.getSource() >> objectInQuestion
+        when:
+        def result = propertyDataFetcher.get(dfe)
+
+        then:
+        result == "foo"
+
+        // repeat - should be cached
+        when:
+        result = propertyDataFetcher.get(dfe)
+
+        then:
+        result == "foo"
+
+        when:
+        propertyDataFetcher = new PropertyDataFetcher("bar")
+        result = propertyDataFetcher.get(dfe)
+
+        then:
+        result == "bar"
+
+        // repeat - should be cached
+        when:
+        result = propertyDataFetcher.get(dfe)
+
+        then:
+        result == "bar"
+    }
+
+    class BaseObject {
+        private String id
+
+        String getId() {
+            return id
+        }
+
+        void setId(String value) {
+            id = value;
+        }
+    }
+
+    class OtherObject extends BaseObject {}
+
+    def "Can access private property from base class that starts with i in Turkish"() {
+        // see https://github.com/graphql-java/graphql-java/issues/3385
+        given:
+        Locale oldLocale = Locale.getDefault()
+        Locale.setDefault(new Locale("tr", "TR"))
+
+        def environment = env(new OtherObject(id: "aValue"))
+        def fetcher = PropertyDataFetcher.fetching("id")
+
+        when:
+        String propValue = fetcher.get(environment)
+
+        then:
+        propValue == 'aValue'
+
+        cleanup:
+        Locale.setDefault(oldLocale)
+    }
+    /**
+     * Classes from issue to ensure we reproduce as reported by customers
+     *
+     * In the UpdateOrganizerSubscriptionPayload class we will find the getSuccess() because static recordLike() methods are no longer allowed
+     */
+    static class OrganizerSubscriptionError {
+        static String message() { return "error " }
+    }
+
+    static class UpdateOrganizerSubscriptionPayload {
+        private final Boolean success
+        private final OrganizerSubscriptionError error
+
+        UpdateOrganizerSubscriptionPayload(Boolean success, OrganizerSubscriptionError error) {
+            this.success = success
+            this.error = error
+        }
+
+        static UpdateOrganizerSubscriptionPayload success() {
+            // 👈 note the static factory method for creating a success payload
+            return new UpdateOrganizerSubscriptionPayload(Boolean.TRUE, null)
+        }
+
+        static UpdateOrganizerSubscriptionPayload error(OrganizerSubscriptionError error) {
+            // 👈 note the static factory method for creating a success payload
+            return new UpdateOrganizerSubscriptionPayload(null, error)
+        }
+
+        Boolean getSuccess() {
+            return success
+        }
+
+        OrganizerSubscriptionError getError() {
+            return error
+        }
+
+
+        @Override
+        String toString() {
+            return new StringJoiner(
+                    ", ", UpdateOrganizerSubscriptionPayload.class.getSimpleName() + "[", "]")
+                    .add("success=" + success)
+                    .add("error=" + error)
+                    .toString()
+        }
+    }
+
+    static class FooClassWithStaticProperties {
+        static String getFoo() { return "foo" }
+    }
+
+    static class BarClassWithStaticProperties extends FooClassWithStaticProperties {
+        static String getBar() { return "bar" }
     }
 }

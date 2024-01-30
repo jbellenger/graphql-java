@@ -2,13 +2,11 @@ package graphql.execution;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import graphql.DeprecatedAt;
 import graphql.ExecutionInput;
 import graphql.GraphQLContext;
 import graphql.GraphQLError;
 import graphql.Internal;
 import graphql.PublicApi;
-import graphql.cachecontrol.CacheControl;
 import graphql.collect.ImmutableKit;
 import graphql.execution.instrumentation.Instrumentation;
 import graphql.execution.instrumentation.InstrumentationState;
@@ -42,7 +40,6 @@ public class ExecutionContextBuilder {
     CoercedVariables coercedVariables = CoercedVariables.emptyVariables();
     ImmutableMap<String, FragmentDefinition> fragmentsByName = ImmutableKit.emptyMap();
     DataLoaderRegistry dataLoaderRegistry;
-    CacheControl cacheControl;
     Locale locale;
     ImmutableList<GraphQLError> errors = emptyList();
     ValueUnboxer valueUnboxer;
@@ -89,7 +86,6 @@ public class ExecutionContextBuilder {
         coercedVariables = other.getCoercedVariables();
         fragmentsByName = ImmutableMap.copyOf(other.getFragmentsByName());
         dataLoaderRegistry = other.getDataLoaderRegistry();
-        cacheControl = other.getCacheControl();
         locale = other.getLocale();
         errors = ImmutableList.copyOf(other.getErrors());
         valueUnboxer = other.getValueUnboxer();
@@ -134,8 +130,7 @@ public class ExecutionContextBuilder {
     /*
      * @deprecated use {@link #graphQLContext(GraphQLContext)} instead
      */
-    @Deprecated
-    @DeprecatedAt("2021-07-05")
+    @Deprecated(since = "2021-07-05")
     public ExecutionContextBuilder context(Object context) {
         this.context = context;
         return this;
@@ -162,8 +157,7 @@ public class ExecutionContextBuilder {
      *
      * @deprecated use {@link #coercedVariables(CoercedVariables)} instead
      */
-    @Deprecated
-    @DeprecatedAt("2022-05-24")
+    @Deprecated(since = "2022-05-24")
     public ExecutionContextBuilder variables(Map<String, Object> variables) {
         this.coercedVariables = CoercedVariables.of(variables);
         return this;
@@ -191,13 +185,6 @@ public class ExecutionContextBuilder {
 
     public ExecutionContextBuilder dataLoaderRegistry(DataLoaderRegistry dataLoaderRegistry) {
         this.dataLoaderRegistry = assertNotNull(dataLoaderRegistry);
-        return this;
-    }
-
-    @Deprecated
-    @DeprecatedAt("2022-07-26")
-    public ExecutionContextBuilder cacheControl(CacheControl cacheControl) {
-        this.cacheControl = cacheControl;
         return this;
     }
 
