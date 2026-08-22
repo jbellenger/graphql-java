@@ -3,6 +3,8 @@ package graphql.execution;
 import graphql.Internal;
 import graphql.PublicApi;
 import graphql.execution.incremental.AlternativeCallContext;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.NullUnmarked;
 import org.jspecify.annotations.Nullable;
 
 import java.util.function.Consumer;
@@ -13,26 +15,27 @@ import static graphql.Assert.assertNotNull;
  * The parameters that are passed to execution strategies
  */
 @PublicApi
+@NullMarked
 public class ExecutionStrategyParameters {
     private final ExecutionStepInfo executionStepInfo;
-    private final Object source;
-    private final Object localContext;
+    private final @Nullable Object source;
+    private final @Nullable Object localContext;
     private final MergedSelectionSet fields;
     private final NonNullableFieldValidator nonNullableFieldValidator;
     private final ResultPath path;
-    private final MergedField currentField;
-    private final ExecutionStrategyParameters parent;
-    private final AlternativeCallContext alternativeCallContext;
+    private final @Nullable MergedField currentField;
+    private final @Nullable ExecutionStrategyParameters parent;
+    private final @Nullable AlternativeCallContext alternativeCallContext;
 
     private ExecutionStrategyParameters(ExecutionStepInfo executionStepInfo,
-                                        Object source,
-                                        Object localContext,
+                                        @Nullable Object source,
+                                        @Nullable Object localContext,
                                         MergedSelectionSet fields,
                                         NonNullableFieldValidator nonNullableFieldValidator,
                                         ResultPath path,
-                                        MergedField currentField,
-                                        ExecutionStrategyParameters parent,
-                                        AlternativeCallContext alternativeCallContext) {
+                                        @Nullable MergedField currentField,
+                                        @Nullable ExecutionStrategyParameters parent,
+                                        @Nullable AlternativeCallContext alternativeCallContext) {
 
         this.executionStepInfo = assertNotNull(executionStepInfo, "executionStepInfo is null");
         this.localContext = localContext;
@@ -49,7 +52,7 @@ public class ExecutionStrategyParameters {
         return executionStepInfo;
     }
 
-    public Object getSource() {
+    public @Nullable Object getSource() {
         return source;
     }
 
@@ -65,37 +68,22 @@ public class ExecutionStrategyParameters {
         return path;
     }
 
-    public Object getLocalContext() {
+    public @Nullable Object getLocalContext() {
         return localContext;
     }
 
-    public ExecutionStrategyParameters getParent() {
+    public @Nullable ExecutionStrategyParameters getParent() {
         return parent;
     }
 
     /**
-     * Returns the deferred call context if we're in the scope of a deferred call.
-     * A new DeferredCallContext is created for each @defer block, and is passed down to all fields within the deferred call.
-     *
-     * <pre>
-     *     query {
-     *        ... @defer {
-     *            field1 {        # new DeferredCallContext created here
-     *                field1a     # DeferredCallContext passed down to this field
-     *            }
-     *        }
-     *
-     *        ... @defer {
-     *            field2          # new DeferredCallContext created here
-     *        }
-     *     }
-     * </pre>
-     *
-     * @return the deferred call context or null if we're not in the scope of a deferred call
+     * Returns the alternative call context if this execution is scoped to an alternative execution path.
+     * This is used for deferred fragment execution and subscription event execution.
+     * @return the alternative call context or null if execution is not scoped to an alternative execution path
      */
     @Nullable
     @Internal
-    public AlternativeCallContext getDeferredCallContext() {
+    public AlternativeCallContext getAlternativeCallContext() {
         return alternativeCallContext;
     }
 
@@ -113,7 +101,7 @@ public class ExecutionStrategyParameters {
      *
      * @return the current merged fields
      */
-    public MergedField getField() {
+    public @Nullable MergedField getField() {
         return currentField;
     }
 
@@ -134,7 +122,7 @@ public class ExecutionStrategyParameters {
     @Internal
     ExecutionStrategyParameters transform(ExecutionStepInfo executionStepInfo,
                                           MergedSelectionSet fields,
-                                          Object source) {
+                                          @Nullable Object source) {
         return new ExecutionStrategyParameters(executionStepInfo,
                 source,
                 localContext,
@@ -149,8 +137,8 @@ public class ExecutionStrategyParameters {
     @Internal
     ExecutionStrategyParameters transform(ExecutionStepInfo executionStepInfo,
                                           ResultPath path,
-                                          Object localContext,
-                                          Object source) {
+                                          @Nullable Object localContext,
+                                          @Nullable Object source) {
         return new ExecutionStrategyParameters(executionStepInfo,
                 source,
                 localContext,
@@ -164,8 +152,8 @@ public class ExecutionStrategyParameters {
 
     @Internal
     ExecutionStrategyParameters transform(ExecutionStepInfo executionStepInfo,
-                                          Object localContext,
-                                          Object source) {
+                                          @Nullable Object localContext,
+                                          @Nullable Object source) {
         return new ExecutionStrategyParameters(executionStepInfo,
                 source,
                 localContext,
@@ -212,6 +200,7 @@ public class ExecutionStrategyParameters {
         return new Builder(oldParameters);
     }
 
+    @NullUnmarked
     public static class Builder {
         ExecutionStepInfo executionStepInfo;
         Object source;
@@ -289,7 +278,7 @@ public class ExecutionStrategyParameters {
             return this;
         }
 
-        public Builder deferredCallContext(AlternativeCallContext alternativeCallContext) {
+        public Builder alternativeCallContext(AlternativeCallContext alternativeCallContext) {
             this.alternativeCallContext = alternativeCallContext;
             return this;
         }

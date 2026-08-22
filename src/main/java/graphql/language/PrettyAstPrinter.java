@@ -5,6 +5,9 @@ import graphql.collect.ImmutableKit;
 import graphql.parser.CommentParser;
 import graphql.parser.NodeToRuleCapturingParser;
 import graphql.parser.ParserEnvironment;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.NullUnmarked;
+import org.jspecify.annotations.Nullable;
 
 import java.util.Collections;
 import java.util.List;
@@ -26,6 +29,7 @@ import static graphql.parser.ParserEnvironment.newParserEnvironment;
  * @see AstPrinter
  */
 @ExperimentalApi
+@NullMarked
 public class PrettyAstPrinter extends AstPrinter {
     private final CommentParser commentParser;
     private final PrettyPrinterOptions options;
@@ -39,6 +43,7 @@ public class PrettyAstPrinter extends AstPrinter {
         this.commentParser = new CommentParser(parserContext);
         this.options = options;
 
+        this.replacePrinter(DirectiveExtensionDefinition.class, directiveExtensionDefinition());
         this.replacePrinter(DirectiveDefinition.class, directiveDefinition());
         this.replacePrinter(Document.class, document());
         this.replacePrinter(EnumTypeDefinition.class, enumTypeDefinition("enum"));
@@ -98,11 +103,25 @@ public class PrettyAstPrinter extends AstPrinter {
             String repeatable = node.isRepeatable() ? "repeatable " : "";
             out.append("directive @")
                     .append(node.getName())
-                    .append(block(node.getInputValueDefinitions(), node, "(", ")", "\n", ", ", ""))
-                    .append(" ")
+                    .append(block(node.getInputValueDefinitions(), node, "(", ")", "\n", ", ", ""));
+            if (!node.getDirectives().isEmpty()) {
+                out.append(" ").append(directives(node.getDirectives()));
+            }
+            out.append(" ")
                     .append(repeatable)
                     .append("on ")
                     .append(locations);
+        };
+    }
+
+    private NodePrinter<DirectiveExtensionDefinition> directiveExtensionDefinition() {
+        return (out, node) -> {
+            out.append(outset(node));
+            out.append(spaced(
+                    "extend directive",
+                    "@" + node.getName(),
+                    directives(node.getDirectives())
+            ));
         };
     }
 
@@ -218,7 +237,7 @@ public class PrettyAstPrinter extends AstPrinter {
         };
     }
 
-    private String node(Node node, Class startClass) {
+    private String node(Node node, @Nullable Class startClass) {
         if (startClass != null) {
             assertTrue(startClass.isInstance(node), "The starting class must be in the inherit tree");
         }
@@ -238,15 +257,15 @@ public class PrettyAstPrinter extends AstPrinter {
         return builder.toString();
     }
 
-    private <T> boolean isEmpty(List<T> list) {
+    private <T> boolean isEmpty(@Nullable List<T> list) {
         return list == null || list.isEmpty();
     }
 
-    private boolean isEmpty(String s) {
+    private boolean isEmpty(@Nullable String s) {
         return s == null || s.isBlank();
     }
 
-    private <T> List<T> nvl(List<T> list) {
+    private <T> List<T> nvl(@Nullable List<T> list) {
         return list != null ? list : ImmutableKit.emptyList();
     }
 
@@ -318,7 +337,7 @@ public class PrettyAstPrinter extends AstPrinter {
         return node(node, null);
     }
 
-    private String spaced(String... args) {
+    private String spaced(@Nullable String... args) {
         return join(" ", args);
     }
 
@@ -330,7 +349,7 @@ public class PrettyAstPrinter extends AstPrinter {
         return text -> text + suffix;
     }
 
-    private String join(String delim, String... args) {
+    private String join(String delim, @Nullable String... args) {
         StringJoiner joiner = new StringJoiner(delim);
 
         for (final String arg : args) {
@@ -342,7 +361,7 @@ public class PrettyAstPrinter extends AstPrinter {
         return joiner.toString();
     }
 
-    private <T extends Node> String block(List<T> nodes, Node parentNode, String prefix, String suffix, String separatorMultiline, String separatorSingleLine, String whenEmpty) {
+    private <T extends Node> String block(List<T> nodes, Node parentNode, String prefix, String suffix, String separatorMultiline, @Nullable String separatorSingleLine, @Nullable String whenEmpty) {
         if (isEmpty(nodes)) {
             return whenEmpty != null ? whenEmpty : prefix + suffix;
         }
@@ -429,6 +448,7 @@ public class PrettyAstPrinter extends AstPrinter {
             }
         }
 
+        @NullUnmarked
         public static class Builder {
             private IndentType indentType;
             private int indentWidth = 1;

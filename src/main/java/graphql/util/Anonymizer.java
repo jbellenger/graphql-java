@@ -870,9 +870,13 @@ public class Anonymizer {
 
             @Override
             public TraversalControl visitInlineFragment(InlineFragment node, TraverserContext<Node> context) {
-                GraphQLType currentCondition = assertNotNull(schema.getType(node.getTypeCondition().getName()));
-                String newCondition = newNames.get(currentCondition);
-                return changeNode(context, node.transform(builder -> builder.typeCondition(new TypeName(newCondition))));
+                TypeName typeCondition = node.getTypeCondition();
+                if (typeCondition != null) {
+                    GraphQLType currentCondition = assertNotNull(schema.getType(typeCondition.getName()));
+                    String newCondition = newNames.get(currentCondition);
+                    return changeNode(context, node.transform(builder -> builder.typeCondition(new TypeName(newCondition))));
+                }
+                return TraversalControl.CONTINUE;
             }
 
             @Override
@@ -887,7 +891,11 @@ public class Anonymizer {
                 // An argument is either from a applied query directive or from a field
                 if (context.getVarFromParents(GraphQLDirective.class) != null) {
                     GraphQLDirective directiveDefinition = context.getVarFromParents(GraphQLDirective.class);
-                    graphQLArgumentDefinition = directiveDefinition.getArgument(argument.getName());
+                    graphQLArgumentDefinition = assertNotNull(
+                            directiveDefinition.getArgument(argument.getName()),
+                            "Directive '%s' argument '%s' not found",
+                            directiveDefinition.getName(),
+                            argument.getName());
                 } else {
                     GraphQLFieldDefinition graphQLFieldDefinition = assertNotNull(context.getVarFromParents(GraphQLFieldDefinition.class));
                     graphQLArgumentDefinition = graphQLFieldDefinition.getArgument(argument.getName());

@@ -45,13 +45,21 @@ public class ShallowTypeRefCollector {
             handleObjectType((GraphQLObjectType) type);
         } else if (type instanceof GraphQLInterfaceType) {
             handleInterfaceType((GraphQLInterfaceType) type);
+        } else if (type instanceof GraphQLEnumType) {
+            handleEnumType((GraphQLEnumType) type);
         }
         // Scan applied directives on all directive container types
         if (type instanceof GraphQLDirectiveContainer) {
-            scanAppliedDirectives(((GraphQLDirectiveContainer) type).getAppliedDirectives());
+            scanDirectiveContainer((GraphQLDirectiveContainer) type);
         }
         if (type instanceof GraphQLUnionType) {
             handleUnionType((GraphQLUnionType) type);
+        }
+    }
+
+    private void handleEnumType(GraphQLEnumType enumType) {
+        for (GraphQLEnumValueDefinition value : enumType.getValues()) {
+            scanAppliedDirectives(value.getAppliedDirectives());
         }
     }
 
@@ -64,6 +72,7 @@ public class ShallowTypeRefCollector {
             // Scan field arguments
             for (GraphQLArgument arg : field.getArguments()) {
                 scanArgumentType(arg);
+                scanAppliedDirectives(arg.getAppliedDirectives());
             }
             // Scan applied directives on field
             scanAppliedDirectives(field.getAppliedDirectives());
@@ -98,6 +107,7 @@ public class ShallowTypeRefCollector {
             // Scan field arguments
             for (GraphQLArgument arg : field.getArguments()) {
                 scanArgumentType(arg);
+                scanAppliedDirectives(arg.getAppliedDirectives());
             }
             // Scan applied directives on field
             scanAppliedDirectives(field.getAppliedDirectives());
@@ -182,8 +192,24 @@ public class ShallowTypeRefCollector {
      * @param directive the directive definition to scan
      */
     public void handleDirective(GraphQLDirective directive) {
+        scanDirectiveContainer(directive);
         for (GraphQLArgument argument : directive.getArguments()) {
             scanArgumentType(argument);
+            scanAppliedDirectives(argument.getAppliedDirectives());
+        }
+    }
+
+    @SuppressWarnings("deprecation")
+    private void scanDirectiveContainer(GraphQLDirectiveContainer directiveContainer) {
+        scanAppliedDirectives(directiveContainer.getAppliedDirectives());
+        scanDirectives(directiveContainer.getDirectives());
+    }
+
+    private void scanDirectives(List<GraphQLDirective> directives) {
+        for (GraphQLDirective directive : directives) {
+            for (GraphQLArgument argument : directive.getArguments()) {
+                scanArgumentType(argument);
+            }
         }
     }
 

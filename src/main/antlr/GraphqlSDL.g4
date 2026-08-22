@@ -9,7 +9,8 @@ directiveDefinition
 
 typeSystemExtension :
 schemaExtension |
-typeExtension
+typeExtension |
+directiveExtension
 ;
 
 schemaDefinition : description? SCHEMA directives? '{' operationTypeDefinition+ '}';
@@ -19,7 +20,7 @@ schemaExtension :
     EXTEND SCHEMA directives
 ;
 
-operationTypeDefinition : description? operationType ':' typeName;
+operationTypeDefinition : operationType ':' typeName;
 
 typeDefinition:
 scalarTypeDefinition |
@@ -121,7 +122,9 @@ inputObjectValueDefinitions : '{' inputValueDefinition* '}';
 extensionInputObjectValueDefinitions : '{' inputValueDefinition+ '}';
 
 
-directiveDefinition : description? DIRECTIVE '@' name argumentsDefinition? REPEATABLE? ON_KEYWORD directiveLocations;
+directiveDefinition : description? DIRECTIVE '@' name argumentsDefinition? directives? REPEATABLE? ON_KEYWORD directiveLocations;
+
+directiveExtension : EXTEND DIRECTIVE '@' name directives;
 
 directiveLocation : name;
 

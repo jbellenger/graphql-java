@@ -79,6 +79,27 @@ type Object2 {
 
     }
 
+    def "query with inline fragment without type condition"() {
+        given:
+        def schema = TestUtil.schema("""
+        type Query {
+            foo: Foo
+        }
+        type Foo {
+            bar1: String
+            bar2: ID
+        }
+        """)
+        def query = "{foo {... {bar1 bar2}}}"
+
+        when:
+        def result = Anonymizer.anonymizeSchemaAndQueries(schema, [query])
+        def newQuery = result.queries[0]
+
+        then:
+        newQuery == "{field1{...{field2 field3}}}"
+    }
+
     def "query with arguments"() {
         given:
         def schema = TestUtil.schema("""
@@ -728,11 +749,11 @@ type Object1 {
 
 directive @Directive1(argument1: String! = "stringValue4") repeatable on SCHEMA | SCALAR | OBJECT | FIELD_DEFINITION | ARGUMENT_DEFINITION | INTERFACE | UNION | ENUM | ENUM_VALUE | INPUT_OBJECT | INPUT_FIELD_DEFINITION
 
-"Marks the field, argument, input field or enum value as deprecated"
+"Marks an element of a GraphQL schema as no longer supported."
 directive @deprecated(
     "The reason for the deprecation"
     reason: String! = "No longer supported"
-  ) on FIELD_DEFINITION | ARGUMENT_DEFINITION | ENUM_VALUE | INPUT_FIELD_DEFINITION
+  ) on FIELD_DEFINITION | ARGUMENT_DEFINITION | ENUM_VALUE | INPUT_FIELD_DEFINITION | DIRECTIVE_DEFINITION
 
 interface Interface1 @Directive1(argument1 : "stringValue12") {
   field2: String

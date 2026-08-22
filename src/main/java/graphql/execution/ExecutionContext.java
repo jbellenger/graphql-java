@@ -11,6 +11,8 @@ import graphql.Internal;
 import graphql.Profiler;
 import graphql.PublicApi;
 import graphql.collect.ImmutableKit;
+import graphql.execution.directives.OperationDirectivesResolver;
+import graphql.execution.directives.QueryAppliedDirective;
 import graphql.execution.incremental.IncrementalCallState;
 import graphql.execution.instrumentation.Instrumentation;
 import graphql.execution.instrumentation.InstrumentationState;
@@ -18,11 +20,11 @@ import graphql.language.Document;
 import graphql.language.FragmentDefinition;
 import graphql.language.OperationDefinition;
 import graphql.normalized.ExecutableNormalizedOperation;
-import graphql.normalized.ExecutableNormalizedOperationFactory;
 import graphql.schema.GraphQLSchema;
 import graphql.util.FpKit;
 import graphql.util.LockKit;
 import org.dataloader.DataLoaderRegistry;
+import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 
 import java.util.HashSet;
@@ -34,8 +36,13 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
+import static graphql.Assert.assertNotNull;
+import static graphql.normalized.ExecutableNormalizedOperationFactory.Options;
+import static graphql.normalized.ExecutableNormalizedOperationFactory.createExecutableNormalizedOperation;
+
 @SuppressWarnings("TypeParameterUnusedInFormals")
 @PublicApi
+@NullMarked
 public class ExecutionContext {
 
     private final GraphQLSchema graphQLSchema;
@@ -73,6 +80,8 @@ public class ExecutionContext {
     private final ResultNodesInfo resultNodesInfo = new ResultNodesInfo();
     private final EngineRunningState engineRunningState;
 
+    private final Supplier<Map<OperationDefinition, ImmutableList<QueryAppliedDirective>>> allOperationsDirectives;
+    private final Supplier<Map<String, ImmutableList<QueryAppliedDirective>>> operationDirectives;
     private final Profiler profiler;
 
     ExecutionContext(ExecutionContextBuilder builder) {
@@ -99,10 +108,27 @@ public class ExecutionContext {
         this.localContext = builder.localContext;
         this.executionInput = builder.executionInput;
         this.dataLoaderDispatcherStrategy = builder.dataLoaderDispatcherStrategy;
-        this.queryTree = FpKit.interThreadMemoize(() -> ExecutableNormalizedOperationFactory.createExecutableNormalizedOperation(graphQLSchema, operationDefinition, fragmentsByName, coercedVariables));
         this.propagateErrorsOnNonNullContractFailure = builder.propagateErrorsOnNonNullContractFailure;
         this.engineRunningState = builder.engineRunningState;
         this.profiler = builder.profiler;
+        // lazy loading for performance
+        this.queryTree = mkExecutableNormalizedOperation();
+        this.allOperationsDirectives = builder.allOperationsDirectives;
+        this.operationDirectives = mkOpDirectives(builder.allOperationsDirectives);
+    }
+
+    private Supplier<ExecutableNormalizedOperation> mkExecutableNormalizedOperation() {
+        return FpKit.interThreadMemoize(() -> {
+            Options options = Options.defaultOptions().graphQLContext(graphQLContext).locale(locale);
+            return createExecutableNormalizedOperation(graphQLSchema, operationDefinition, fragmentsByName, coercedVariables, options);
+        });
+    }
+
+    private Supplier<Map<String, ImmutableList<QueryAppliedDirective>>> mkOpDirectives(Supplier<Map<OperationDefinition, ImmutableList<QueryAppliedDirective>>> allOperationsDirectives) {
+        return FpKit.interThreadMemoize(() -> {
+            List<QueryAppliedDirective> list = allOperationsDirectives.get().getOrDefault(operationDefinition, ImmutableList.of());
+            return OperationDirectivesResolver.toAppliedDirectivesByName(list);
+        });
     }
 
     public ExecutionId getExecutionId() {
@@ -137,6 +163,21 @@ public class ExecutionContext {
         return operationDefinition;
     }
 
+    /**
+     * @return the map of {@link QueryAppliedDirective}s by name that were on this executing operation
+     */
+    public Map<String, ImmutableList<QueryAppliedDirective>> getOperationDirectives() {
+        return operationDirectives.get();
+    }
+
+    /**
+     * @return the map of all the  {@link QueryAppliedDirective}s that were on the {@link Document} including
+     * {@link OperationDefinition}s that are not currently executing.
+     */
+    public Map<OperationDefinition, ImmutableList<QueryAppliedDirective>> getAllOperationDirectives() {
+        return allOperationsDirectives.get();
+    }
+
     public CoercedVariables getCoercedVariables() {
         return coercedVariables;
     }
@@ -156,7 +197,7 @@ public class ExecutionContext {
      * @deprecated use {@link #getGraphQLContext()} instead
      */
     @Deprecated(since = "2021-07-05")
-    @SuppressWarnings({ "unchecked", "TypeParameterUnusedInFormals" })
+    @SuppressWarnings({"unchecked", "TypeParameterUnusedInFormals"})
     public @Nullable <T> T getContext() {
         return (T) context;
     }
@@ -175,7 +216,7 @@ public class ExecutionContext {
         return (T) root;
     }
 
-    public FragmentDefinition getFragment(String name) {
+    public @Nullable FragmentDefinition getFragment(String name) {
         return fragmentsByName.get(name);
     }
 
@@ -247,7 +288,7 @@ public class ExecutionContext {
             if (!errorPaths.add(fieldPath)) {
                 return;
             }
-            this.errors.set(ImmutableKit.addToList(this.errors.get(), error));
+            this.errors.set(ImmutableKit.addToList(assertNotNull(this.errors.get(), "errors list must not be null"), error));
         });
     }
 
@@ -266,7 +307,7 @@ public class ExecutionContext {
                 ResultPath path = ResultPath.fromList(error.getPath());
                 this.errorPaths.add(path);
             }
-            this.errors.set(ImmutableKit.addToList(this.errors.get(), error));
+            this.errors.set(ImmutableKit.addToList(assertNotNull(this.errors.get(), "errors list must not be null"), error));
         });
     }
 
@@ -294,7 +335,7 @@ public class ExecutionContext {
                 }
             }
             this.errorPaths.addAll(newErrorPaths);
-            this.errors.set(ImmutableKit.concatLists(this.errors.get(), errors));
+            this.errors.set(ImmutableKit.concatLists(assertNotNull(this.errors.get(), "errors list must not be null"), errors));
         });
     }
 
@@ -307,7 +348,7 @@ public class ExecutionContext {
      * @return the total list of errors for this execution context
      */
     public List<GraphQLError> getErrors() {
-        return errors.get();
+        return assertNotNull(errors.get(), "errors list must not be null");
     }
 
     public ExecutionStrategy getQueryStrategy() {

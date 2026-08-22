@@ -4,6 +4,8 @@ import graphql.PublicApi;
 import graphql.schema.idl.TypeInfo;
 import graphql.util.TraversalControl;
 import graphql.util.TraverserContext;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -18,6 +20,7 @@ import static java.util.Comparator.nullsLast;
  * A class that helps you sort AST nodes
  */
 @PublicApi
+@NullMarked
 public class AstSorter {
 
     /**
@@ -213,7 +216,14 @@ public class AstSorter {
 
             @Override
             public TraversalControl visitDirectiveDefinition(DirectiveDefinition node, TraverserContext<Node> context) {
+                if (node instanceof DirectiveExtensionDefinition) {
+                    DirectiveExtensionDefinition extension = (DirectiveExtensionDefinition) node;
+                    DirectiveExtensionDefinition changedExtension = extension.transformExtension(builder ->
+                            builder.directives(sort(node.getDirectives(), comparing(Directive::getName))));
+                    return changeNode(context, changedExtension);
+                }
                 DirectiveDefinition changedNode = node.transform(builder -> {
+                    builder.directives(sort(node.getDirectives(), comparing(Directive::getName)));
                     builder.inputValueDefinitions(sort(node.getInputValueDefinitions(), comparing(InputValueDefinition::getName)));
                     builder.directiveLocations(sort(node.getDirectiveLocations(), comparing(DirectiveLocation::getName)));
                 });
@@ -281,7 +291,7 @@ public class AstSorter {
         Function<Definition, Integer> byType = d -> {
             if (d instanceof OperationDefinition) {
                 OperationDefinition.Operation operation = ((OperationDefinition) d).getOperation();
-                if (OperationDefinition.Operation.QUERY == operation || operation == null) {
+                if (OperationDefinition.Operation.QUERY == operation) {
                     return 101;
                 }
                 if (OperationDefinition.Operation.MUTATION == operation) {
@@ -328,7 +338,7 @@ public class AstSorter {
         return comparing(byType).thenComparing(byName);
     }
 
-    private SelectionSet sortSelectionSet(SelectionSet selectionSet) {
+    private @Nullable SelectionSet sortSelectionSet(@Nullable SelectionSet selectionSet) {
         if (selectionSet == null) {
             return null;
         }

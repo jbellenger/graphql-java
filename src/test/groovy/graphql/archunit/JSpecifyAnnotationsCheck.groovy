@@ -1,5 +1,6 @@
 package graphql.archunit
 
+import com.tngtech.archunit.core.domain.JavaClass
 import com.tngtech.archunit.core.importer.ClassFileImporter
 import com.tngtech.archunit.core.importer.ImportOption
 import spock.lang.Specification
@@ -11,83 +12,7 @@ import spock.lang.Specification
 class JSpecifyAnnotationsCheck extends Specification {
 
     private static final Set<String> JSPECIFY_EXEMPTION_LIST = [
-            "graphql.analysis.QueryComplexityCalculator",
-            "graphql.analysis.QueryComplexityInfo",
-            "graphql.analysis.QueryDepthInfo",
-            "graphql.analysis.QueryReducer",
-            "graphql.analysis.QueryTransformer",
-            "graphql.analysis.QueryTraversalOptions",
             "graphql.analysis.QueryTraverser",
-            "graphql.analysis.QueryVisitor",
-            "graphql.analysis.QueryVisitorFieldArgumentEnvironment",
-            "graphql.analysis.QueryVisitorFieldArgumentInputValue",
-            "graphql.analysis.QueryVisitorFieldArgumentValueEnvironment",
-            "graphql.analysis.QueryVisitorFieldEnvironment",
-            "graphql.analysis.QueryVisitorFragmentDefinitionEnvironment",
-            "graphql.analysis.QueryVisitorFragmentSpreadEnvironment",
-            "graphql.analysis.QueryVisitorInlineFragmentEnvironment",
-            "graphql.analysis.QueryVisitorStub",
-            "graphql.analysis.values.ValueTraverser",
-            "graphql.execution.AbortExecutionException",
-            "graphql.execution.AsyncExecutionStrategy",
-            "graphql.execution.AsyncSerialExecutionStrategy",
-            "graphql.execution.CoercedVariables",
-            "graphql.execution.DataFetcherExceptionHandlerParameters",
-            "graphql.execution.DataFetcherExceptionHandlerResult",
-            "graphql.execution.DefaultValueUnboxer",
-            "graphql.execution.ExecutionContext",
-            "graphql.execution.ExecutionId",
-            "graphql.execution.ExecutionStepInfo",
-            "graphql.execution.ExecutionStrategyParameters",
-            "graphql.execution.FetchedValue",
-            "graphql.execution.FieldValueInfo",
-            "graphql.execution.InputMapDefinesTooManyFieldsException",
-            "graphql.execution.MergedSelectionSet",
-            "graphql.execution.MissingRootTypeException",
-            "graphql.execution.NonNullableValueCoercedAsNullException",
-            "graphql.execution.NormalizedVariables",
-            "graphql.execution.OneOfNullValueException",
-            "graphql.execution.OneOfTooManyKeysException",
-            "graphql.execution.ResultNodesInfo",
-            "graphql.execution.ResultPath",
-            "graphql.execution.SimpleDataFetcherExceptionHandler",
-            "graphql.execution.SubscriptionExecutionStrategy",
-            "graphql.execution.UnknownOperationException",
-            "graphql.execution.UnresolvedTypeException",
-            "graphql.execution.conditional.ConditionalNodeDecision",
-            "graphql.execution.directives.QueryAppliedDirective",
-            "graphql.execution.directives.QueryAppliedDirectiveArgument",
-            "graphql.execution.directives.QueryDirectives",
-            "graphql.execution.incremental.DeferredExecution",
-            "graphql.execution.instrumentation.ChainedInstrumentation",
-            "graphql.execution.instrumentation.DocumentAndVariables",
-            "graphql.execution.instrumentation.NoContextChainedInstrumentation",
-            "graphql.execution.ResponseMapFactory",
-            "graphql.execution.instrumentation.SimpleInstrumentation",
-            "graphql.execution.instrumentation.SimpleInstrumentationContext",
-            "graphql.execution.instrumentation.SimplePerformantInstrumentation",
-            "graphql.execution.instrumentation.fieldvalidation.FieldAndArguments",
-            "graphql.execution.instrumentation.fieldvalidation.FieldValidationEnvironment",
-            "graphql.execution.instrumentation.fieldvalidation.FieldValidationInstrumentation",
-            "graphql.execution.instrumentation.fieldvalidation.SimpleFieldValidation",
-            "graphql.execution.instrumentation.parameters.InstrumentationCreateStateParameters",
-            "graphql.execution.instrumentation.parameters.InstrumentationExecuteOperationParameters",
-            "graphql.execution.instrumentation.parameters.InstrumentationExecutionParameters",
-            "graphql.execution.instrumentation.parameters.InstrumentationExecutionStrategyParameters",
-            "graphql.execution.instrumentation.parameters.InstrumentationFieldCompleteParameters",
-            "graphql.execution.instrumentation.parameters.InstrumentationFieldFetchParameters",
-            "graphql.execution.instrumentation.parameters.InstrumentationFieldParameters",
-            "graphql.execution.instrumentation.parameters.InstrumentationValidationParameters",
-            "graphql.execution.instrumentation.tracing.TracingInstrumentation",
-            "graphql.execution.instrumentation.tracing.TracingSupport",
-            "graphql.execution.preparsed.PreparsedDocumentEntry",
-            "graphql.execution.preparsed.persisted.ApolloPersistedQuerySupport",
-            "graphql.execution.preparsed.persisted.InMemoryPersistedQueryCache",
-            "graphql.execution.preparsed.persisted.PersistedQueryCacheMiss",
-            "graphql.execution.preparsed.persisted.PersistedQueryIdInvalid",
-            "graphql.execution.preparsed.persisted.PersistedQueryNotFound",
-            "graphql.execution.reactive.DelegatingSubscription",
-            "graphql.execution.reactive.SubscriptionPublisher",
             "graphql.extensions.ExtensionsBuilder",
             "graphql.incremental.DeferPayload",
             "graphql.incremental.DelayedIncrementalPartialResult",
@@ -96,62 +21,12 @@ class JSpecifyAnnotationsCheck extends Specification {
             "graphql.incremental.IncrementalExecutionResultImpl",
             "graphql.incremental.IncrementalPayload",
             "graphql.incremental.StreamPayload",
-            "graphql.introspection.GoodFaithIntrospection",
             "graphql.introspection.Introspection",
             "graphql.introspection.IntrospectionQuery",
             "graphql.introspection.IntrospectionQueryBuilder",
             "graphql.introspection.IntrospectionResultToSchema",
             "graphql.introspection.IntrospectionWithDirectivesSupport",
             "graphql.introspection.IntrospectionWithDirectivesSupport\$DirectivePredicateEnvironment",
-            "graphql.language.AbstractDescribedNode",
-            "graphql.language.AstNodeAdapter",
-            "graphql.language.AstPrinter",
-            "graphql.language.AstSignature",
-            "graphql.language.AstSorter",
-            "graphql.language.AstTransformer",
-            "graphql.language.Comment",
-            "graphql.language.Definition",
-            "graphql.language.DescribedNode",
-            "graphql.language.Description",
-            "graphql.language.Directive",
-            "graphql.language.DirectiveDefinition",
-            "graphql.language.DirectiveLocation",
-            "graphql.language.DirectivesContainer",
-            "graphql.language.Document",
-            "graphql.language.EnumTypeDefinition",
-            "graphql.language.EnumTypeExtensionDefinition",
-            "graphql.language.EnumValueDefinition",
-            "graphql.language.Field",
-            "graphql.language.FieldDefinition",
-            "graphql.language.FragmentDefinition",
-            "graphql.language.FragmentSpread",
-            "graphql.language.IgnoredChar",
-            "graphql.language.IgnoredChars",
-            "graphql.language.ImplementingTypeDefinition",
-            "graphql.language.InlineFragment",
-            "graphql.language.InputObjectTypeDefinition",
-            "graphql.language.InputObjectTypeExtensionDefinition",
-            "graphql.language.InputValueDefinition",
-            "graphql.language.InterfaceTypeDefinition",
-            "graphql.language.InterfaceTypeExtensionDefinition",
-            "graphql.language.ListType",
-            "graphql.language.Node",
-            "graphql.language.NodeChildrenContainer",
-            "graphql.language.NodeDirectivesBuilder",
-            "graphql.language.NodeParentTree",
-            "graphql.language.NodeTraverser",
-            "graphql.language.NodeVisitor",
-            "graphql.language.NodeVisitorStub",
-            "graphql.language.NonNullType",
-            "graphql.language.ObjectField",
-            "graphql.language.ObjectTypeDefinition",
-            "graphql.language.ObjectTypeExtensionDefinition",
-            "graphql.language.OperationDefinition",
-            "graphql.language.OperationTypeDefinition",
-            "graphql.language.PrettyAstPrinter",
-            "graphql.language.SDLDefinition",
-            "graphql.language.SDLExtensionDefinition",
-            "graphql.language.SDLNamedDefinition",
             "graphql.language.ScalarTypeDefinition",
             "graphql.language.ScalarTypeExtensionDefinition",
             "graphql.language.SchemaDefinition",
@@ -159,9 +34,6 @@ class JSpecifyAnnotationsCheck extends Specification {
             "graphql.language.Selection",
             "graphql.language.SelectionSet",
             "graphql.language.SelectionSetContainer",
-            "graphql.language.SourceLocation",
-            "graphql.language.Type",
-            "graphql.language.TypeDefinition",
             "graphql.language.TypeKind",
             "graphql.language.TypeName",
             "graphql.language.UnionTypeDefinition",
@@ -196,7 +68,6 @@ class JSpecifyAnnotationsCheck extends Specification {
             "graphql.schema.GraphQLAppliedDirectiveArgument",
             "graphql.schema.GraphQLArgument",
             "graphql.schema.GraphQLCompositeType",
-            "graphql.schema.GraphQLDirective",
             "graphql.schema.GraphQLDirectiveContainer",
             "graphql.schema.GraphQLEnumValueDefinition",
             "graphql.schema.GraphQLFieldDefinition",
@@ -251,8 +122,6 @@ class JSpecifyAnnotationsCheck extends Specification {
             "graphql.schema.idl.TypeRuntimeWiring",
             "graphql.schema.idl.errors.SchemaProblem",
             "graphql.schema.idl.errors.StrictModeWiringException",
-            "graphql.schema.transform.FieldVisibilitySchemaTransformation",
-            "graphql.schema.transform.VisibleFieldPredicateEnvironment",
             "graphql.schema.usage.SchemaUsage",
             "graphql.schema.usage.SchemaUsageSupport",
             "graphql.schema.validation.OneOfInputObjectRules",
@@ -289,7 +158,7 @@ class JSpecifyAnnotationsCheck extends Specification {
         when:
         def classesMissingAnnotation = classes
                 .stream()
-                .filter { !it.isAnnotatedWith("org.jspecify.annotations.NullMarked") && !it.isAnnotatedWith("org.jspecify.annotations.NullUnmarked") }
+                .filter { !isJSpecifyAnnotated(it) }
                 .map { it.name }
                 .filter { it -> !JSPECIFY_EXEMPTION_LIST.contains(it) }
                 .collect()
@@ -312,7 +181,7 @@ Add @NullMarked or @NullUnmarked to these public API classes. See documentation 
         when:
         def annotatedButExempted = classes.stream()
                 .filter { JSPECIFY_EXEMPTION_LIST.contains(it.name) }
-                .filter { it.isAnnotatedWith("org.jspecify.annotations.NullMarked") || it.isAnnotatedWith("org.jspecify.annotations.NullUnmarked") }
+                .filter { isJSpecifyAnnotated(it) }
                 .map { it.name }
                 .collect()
 
@@ -323,5 +192,12 @@ ${annotatedButExempted.sort().join("\n")}
 
 Please remove them from the exemption list in ${JSpecifyAnnotationsCheck.class.simpleName}.groovy.""")
         }
+    }
+
+    private static boolean isJSpecifyAnnotated(JavaClass javaClass) {
+        return javaClass.isAnnotatedWith("org.jspecify.annotations.NullMarked") ||
+                javaClass.isAnnotatedWith("org.jspecify.annotations.NullUnmarked") ||
+                javaClass.package.isAnnotatedWith("org.jspecify.annotations.NullMarked") ||
+                javaClass.package.isAnnotatedWith("org.jspecify.annotations.NullUnmarked")
     }
 }

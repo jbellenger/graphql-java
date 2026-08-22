@@ -2,14 +2,17 @@ import aQute.bnd.gradle.BundleTaskExtension
 import net.ltgt.gradle.errorprone.CheckSeverity
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.dsl.KotlinVersion
+import org.objectweb.asm.ClassReader
+import org.objectweb.asm.ClassWriter
+import org.objectweb.asm.tree.ClassNode
 
 import java.text.SimpleDateFormat
 
 buildscript {
     repositories { mavenCentral() }
     dependencies {
-        classpath 'org.ow2.asm:asm:9.7.1'
-        classpath 'org.ow2.asm:asm-tree:9.7.1'
+        classpath 'org.ow2.asm:asm:9.10.1'
+        classpath 'org.ow2.asm:asm-tree:9.10.1'
     }
 }
 
@@ -19,17 +22,17 @@ plugins {
     id 'maven-publish'
     id 'antlr'
     id 'signing'
-    id "com.gradleup.shadow" version "9.3.1"
+    id "com.gradleup.shadow" version "9.4.2"
     id "biz.aQute.bnd.builder" version "7.1.0"
     id "io.github.gradle-nexus.publish-plugin" version "2.0.0"
     id "groovy"
     id "me.champeau.jmh" version "0.7.3"
     id "io.github.reyerizo.gradle.jcstress" version "0.9.0"
-    id "net.ltgt.errorprone" version '5.0.0'
+    id "net.ltgt.errorprone" version '5.1.0'
     id 'jacoco'
     //
     // Kotlin just for tests - not production code
-    id 'org.jetbrains.kotlin.jvm' version '2.3.0'
+    id 'org.jetbrains.kotlin.jvm' version '2.4.0'
 }
 
 java {
@@ -55,6 +58,83 @@ def makeDevelopmentVersion(parts) {
     def version = String.join("-", parts)
     println "created development version: $version"
     return version
+}
+
+static private List<List> invisibleAnnotationLists(ClassNode classNode) {
+    def annotationLists = []
+    if (classNode.invisibleAnnotations != null) {
+        annotationLists.add(classNode.invisibleAnnotations)
+    }
+    classNode.fields.each { field ->
+        if (field.invisibleAnnotations != null) {
+            annotationLists.add(field.invisibleAnnotations)
+        }
+    }
+    classNode.methods.each { method ->
+        if (method.invisibleAnnotations != null) {
+            annotationLists.add(method.invisibleAnnotations)
+        }
+        method.invisibleParameterAnnotations?.each { annotations ->
+            if (annotations != null) {
+                annotationLists.add(annotations)
+            }
+        }
+    }
+    classNode.recordComponents?.each { recordComponent ->
+        if (recordComponent.invisibleAnnotations != null) {
+            annotationLists.add(recordComponent.invisibleAnnotations)
+        }
+    }
+    return annotationLists
+}
+
+static private int removeListedInvisibleAnnotations(ClassNode classNode, Set<String> annotationsToRemove) {
+    int removedAnnotationCount = 0
+    invisibleAnnotationLists(classNode).each { annotations ->
+        int originalSize = annotations.size()
+        annotations.removeAll { annotation -> annotationsToRemove.contains(annotation.desc) }
+        removedAnnotationCount += originalSize - annotations.size()
+    }
+
+    classNode.methods.each { method ->
+        if (method.invisibleParameterAnnotations == null) return
+        if (!method.invisibleParameterAnnotations.every { it == null || it.isEmpty() }) return
+
+        method.invisibleParameterAnnotations = null
+        method.invisibleAnnotableParameterCount = 0
+    }
+    return removedAnnotationCount
+}
+
+static private String classEntryForAnnotationDescriptor(String descriptor) {
+    if (!descriptor.startsWith('L') || !descriptor.endsWith(';')) {
+        throw new GradleException("Invalid annotation descriptor: ${descriptor}")
+    }
+    return descriptor.substring(1, descriptor.length() - 1) + '.class'
+}
+
+static private Map<String, Integer> rewriteClassFiles(File directory, Closure<Integer> rewriteClass) {
+    int modifiedClassCount = 0
+    int modificationCount = 0
+
+    directory.eachFileRecurse(groovy.io.FileType.FILES) { file ->
+        if (!file.name.endsWith('.class')) return
+
+        byte[] originalBytes = file.bytes
+        def reader = new ClassReader(originalBytes)
+        def classNode = new ClassNode()
+        reader.accept(classNode, 0)
+
+        int classModificationCount = rewriteClass.call(classNode)
+        if (classModificationCount == 0) return
+
+        def writer = new ClassWriter(reader, 0)
+        classNode.accept(writer)
+        file.bytes = writer.toByteArray()
+        modifiedClassCount++
+        modificationCount += classModificationCount
+    }
+    return [modifiedClassCount: modifiedClassCount, modificationCount: modificationCount]
 }
 
 def getDevelopmentVersion() {
@@ -100,6 +180,9 @@ def guavaVersion = '32.1.2-jre'
 version = releaseVersion ? releaseVersion : getDevelopmentVersion()
 group = 'com.graphql-java'
 
+def plainJarDir = layout.buildDirectory.dir('intermediates/plain-jar')
+def shadowJarDir = layout.buildDirectory.dir('intermediates/shadow-jar')
+
 gradle.buildFinished { buildResult ->
     println "*******************************"
     println "*"
@@ -119,6 +202,11 @@ repositories {
 }
 
 jar {
+    // The regular Java JAR is an input to the shading pipeline, not a
+    // publishable artifact. Keep it out of build/libs so it cannot be mistaken
+    // for the final GraphQL Java JAR.
+    archiveClassifier.set('plain')
+    destinationDirectory.set(plainJarDir)
     from "LICENSE.md"
     from "src/main/antlr/Graphql.g4"
     from "src/main/antlr/GraphqlOperation.g4"
@@ -129,6 +217,20 @@ jar {
     }
 }
 
+shadow {
+    // GraphQL Java has additional post-processing after shadowJar. Do not let
+    // Shadow expose its intermediate artifact through the Java component or
+    // add it directly to assemble; buildFinalJar owns both responsibilities.
+    addShadowVariantIntoJavaComponent.set(false)
+    addShadowJarToAssembleLifecycle.set(false)
+
+    // The shadow runtime variant is disabled below because it would expose the
+    // uncleaned intermediate JAR. It therefore has no need for a target JVM
+    // attribute. Disabling this also prevents Shadow's afterEvaluate hook from
+    // trying to mutate that configuration after it has become non-consumable.
+    addTargetJvmVersionAttribute.set(false)
+}
+
 dependencies {
     api 'com.graphql-java:java-dataloader:6.0.0'
     api 'org.reactivestreams:reactive-streams:' + reactiveStreamsVersion
@@ -137,42 +239,42 @@ dependencies {
     implementation 'org.antlr:antlr4-runtime:' + antlrVersion
     implementation 'com.google.guava:guava:' + guavaVersion
 
-    testImplementation 'org.junit.jupiter:junit-jupiter:5.14.1'
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.14.4'
 
     testImplementation 'org.spockframework:spock-core:2.4-groovy-5.0'
-    testImplementation 'net.bytebuddy:byte-buddy:1.18.5'
+    testImplementation 'net.bytebuddy:byte-buddy:1.18.8'
     testImplementation 'org.objenesis:objenesis:3.5'
-    testImplementation 'org.apache.groovy:groovy:5.0.4'
-    testImplementation 'org.apache.groovy:groovy-json:5.0.4'
-    testImplementation 'com.google.code.gson:gson:2.13.2'
+    testImplementation 'org.apache.groovy:groovy:5.0.7'
+    testImplementation 'org.apache.groovy:groovy-json:5.0.7'
+    testImplementation 'com.google.code.gson:gson:2.14.0'
     testImplementation 'org.eclipse.jetty:jetty-server:11.0.26'
-    testImplementation 'com.fasterxml.jackson.core:jackson-databind:2.21.1'
+    testImplementation 'com.fasterxml.jackson.core:jackson-databind:2.22.0'
     testImplementation 'org.awaitility:awaitility-groovy:4.3.0'
     testImplementation 'com.github.javafaker:javafaker:1.0.2'
 
     testImplementation 'org.reactivestreams:reactive-streams-tck:' + reactiveStreamsVersion
     testImplementation "io.reactivex.rxjava2:rxjava:2.2.21"
-    testImplementation "io.projectreactor:reactor-core:3.8.0"
+    testImplementation "io.projectreactor:reactor-core:3.8.5"
 
     testImplementation 'org.testng:testng:7.12.0' // use for reactive streams test inheritance
-    testImplementation "com.tngtech.archunit:archunit-junit5:1.4.1"
+    testImplementation "com.tngtech.archunit:archunit-junit5:1.4.2"
     testImplementation 'org.openjdk.jmh:jmh-core:1.37' // required for ArchUnit to check JMH tests
     
     // JUnit Platform launcher required for Gradle 9
-    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.14.1'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.14.4'
 
     antlr 'org.antlr:antlr4:' + antlrVersion
 
     // this is needed for the idea jmh plugin to work correctly
     jmh 'org.openjdk.jmh:jmh-core:1.37'
     jmh 'org.openjdk.jmh:jmh-generator-annprocess:1.37'
-    jmh 'me.bechberger:ap-loader-all:4.3-12'
+    jmh 'me.bechberger:ap-loader-all:4.4-13'
 
     // comment this in if you want to run JMH benchmarks from idea
 //    jmhAnnotationProcessor 'org.openjdk.jmh:jmh-generator-annprocess:1.37'
 
-    errorprone 'com.uber.nullaway:nullaway:0.12.10'
-    errorprone 'com.google.errorprone:error_prone_core:2.47.0'
+    errorprone 'com.uber.nullaway:nullaway:0.13.8'
+    errorprone 'com.google.errorprone:error_prone_core:2.50.0'
 
     // just tests - no Kotlin otherwise
     testImplementation 'org.jetbrains.kotlin:kotlin-stdlib-jdk8'
@@ -180,7 +282,10 @@ dependencies {
 
 shadowJar {
     minimize()
-    archiveClassifier.set('')
+    // This is deliberately an intermediate artifact. The only unclassified
+    // binary JAR is produced by buildFinalJar after cleanup.
+    archiveClassifier.set('shadow')
+    destinationDirectory.set(shadowJarDir)
     configurations = [project.configurations.compileClasspath]
     relocate('com.google.common', 'graphql.com.google.common') {
         include 'com.google.common.collect.*'
@@ -284,32 +389,204 @@ jmh {
 }
 
 
-task extractWithoutGuava(type: Copy) {
-    from({ zipTree({ "build/libs/graphql-java-${project.version}.jar" }) }) {
+def extractedShadowJarDir = layout.buildDirectory.dir('intermediates/shadow-jar-extracted')
+def annotationCleanedShadowJarDir = layout.buildDirectory.dir('intermediates/annotation-cleaned')
+
+// External CLASS-retention annotations referenced by shaded classes. Keep this
+// list explicit so GraphQL Java's own invisible annotations remain untouched.
+def annotationsToRemoveFromShadedJar = [
+        'Lcom/google/common/annotations/Beta;',
+        'Lcom/google/common/annotations/GwtCompatible;',
+        'Lcom/google/common/annotations/GwtIncompatible;',
+        'Lcom/google/common/annotations/J2ktIncompatible;',
+        'Lcom/google/common/annotations/VisibleForTesting;',
+        'Lcom/google/errorprone/annotations/CanIgnoreReturnValue;',
+        'Lcom/google/errorprone/annotations/CompatibleWith;',
+        'Lcom/google/errorprone/annotations/DoNotCall;',
+        'Lcom/google/errorprone/annotations/ForOverride;',
+        'Lcom/google/errorprone/annotations/InlineMe;',
+        'Lcom/google/errorprone/annotations/InlineMeValidationDisabled;',
+        'Lcom/google/errorprone/annotations/concurrent/GuardedBy;',
+        'Lcom/google/j2objc/annotations/RetainedWith;',
+        'Lcom/google/j2objc/annotations/Weak;',
+        'Ljavax/annotation/meta/TypeQualifierNickname;',
+] as Set<String>
+
+/**
+ * Expands the shaded JAR into a clean working directory and removes any
+ * unrelocated dependency classes that remain under {@code com/**}.
+ *
+ * The annotation cleanup must consume this output rather than the regular
+ * {@code jar} output because dependency classes only exist after shadowing.
+ */
+task extractWithoutGuava(type: Sync) {
+    description = 'Extract the shaded jar without unrelocated dependency classes'
+    from({ zipTree(tasks.named('shadowJar').get().archiveFile) }) {
         exclude('/com/**')
     }
-    into layout.buildDirectory.dir("extract")
+    into extractedShadowJarDir
 }
 
-extractWithoutGuava.dependsOn jar
+extractWithoutGuava.dependsOn shadowJar
 
-task buildNewJar(type: Jar) {
-    from layout.buildDirectory.dir("extract")
-    archiveFileName = "graphql-java-tmp.jar"
-    destinationDirectory = file("${project.buildDir}/libs")
-    manifest {
-        from file("build/extract/META-INF/MANIFEST.MF")
-    }
-    def projectVersion = version
+/**
+ * Copies the extracted shaded JAR into a separate output directory and uses
+ * ASM to remove the explicitly configured annotations from declaration-level
+ * {@code RuntimeInvisibleAnnotations} and
+ * {@code RuntimeInvisibleParameterAnnotations} attributes.
+ *
+ * Other invisible annotations, runtime-visible annotations, and invisible
+ * type annotations are deliberately preserved.
+ */
+tasks.register('cleanShadedClassAnnotations', Sync) {
+    description = 'Remove selected invisible annotations from shaded class files'
+    dependsOn extractWithoutGuava
+
+    from extractedShadowJarDir
+    into annotationCleanedShadowJarDir
+    inputs.property('annotationsToRemove', annotationsToRemoveFromShadedJar.toList().sort())
+
     doLast {
-        delete("build/libs/graphql-java-${projectVersion}.jar")
-        file("build/libs/graphql-java-tmp.jar").renameTo(file("build/libs/graphql-java-${projectVersion}.jar"))
+        def outputDir = annotationCleanedShadowJarDir.get().asFile
+        def result = rewriteClassFiles(outputDir) { classNode ->
+            removeListedInvisibleAnnotations(classNode, annotationsToRemoveFromShadedJar)
+        }
+
+        logger.lifecycle("Removed ${result.modificationCount} invisible annotations; modified ${result.modifiedClassCount} shaded class files")
     }
 }
 
-buildNewJar.dependsOn extractWithoutGuava
+/**
+ * Produces the sole unclassified GraphQL Java binary JAR directly from the
+ * annotation-cleaned directory, retaining the manifest produced by Bnd for
+ * the shaded JAR.
+ *
+ * The regular jar and shadowJar tasks write explicitly named intermediates to
+ * build/intermediates. This task alone owns the final build/libs path so Gradle
+ * can accurately track it and no earlier pipeline stage can overwrite it.
+ */
+def buildFinalJar = tasks.register('buildFinalJar', Jar) {
+    group = 'build'
+    description = 'Build the published jar from cleaned shaded class files'
+    dependsOn cleanShadedClassAnnotations
 
-shadowJar.finalizedBy extractWithoutGuava, buildNewJar
+    from(annotationCleanedShadowJarDir) {
+        exclude 'META-INF/MANIFEST.MF'
+    }
+    archiveClassifier.set('')
+    destinationDirectory.set(layout.buildDirectory.dir('libs'))
+    manifest {
+        from annotationCleanedShadowJarDir.map { it.file("META-INF/MANIFEST.MF") }
+    }
+}
+
+assemble.dependsOn buildFinalJar
+
+// The Java component is the source of the main Maven publication. Replace the
+// regular jar artifact on both variants with buildFinalJar so local consumers,
+// project dependencies, signing, and publication all resolve the same cleaned
+// binary. Shadow's optional Java variant is disabled above for the same reason.
+configurations.named('apiElements') {
+    outgoing.artifacts.clear()
+    outgoing.artifact(buildFinalJar)
+}
+configurations.named('runtimeElements') {
+    outgoing.artifacts.clear()
+    outgoing.artifact(buildFinalJar)
+}
+// Shadow creates this configuration independently of its optional Java
+// component variant. Make it non-consumable so dependency resolution cannot
+// select the uncleaned intermediate; shadowJar remains available only as an
+// explicitly invoked internal pipeline task.
+configurations.named('shadowRuntimeElements') {
+    canBeConsumed = false
+}
+
+/**
+ * Scans every class in the completed published JAR with ASM and fails if any
+ * configured annotation remains, or if an invisible annotation references an
+ * annotation class that is not bundled in the JAR. This allows both GraphQL
+ * Java annotations and resolvable relocated dependency annotations. The task
+ * also verifies that {@code graphql.Contract} was preserved by the selective
+ * cleanup.
+ */
+def verifyShadedClassAnnotations = tasks.register('verifyShadedClassAnnotations') {
+    group = 'verification'
+    description = 'Verify invisible annotations are bundled or removed from the published jar'
+    dependsOn buildFinalJar
+
+    def shadedJar = buildFinalJar.flatMap { it.archiveFile }
+    inputs.file(shadedJar)
+    inputs.property('annotationsToRemove', annotationsToRemoveFromShadedJar.toList().sort())
+
+    doLast {
+        def annotationsThatShouldHaveBeenRemoved = []
+        def unresolvableAnnotations = []
+        boolean graphqlContractFound = false
+
+        new java.util.jar.JarFile(shadedJar.get().asFile).withCloseable { jarFile ->
+            jarFile.entries().each { entry ->
+                if (entry.directory || !entry.name.endsWith('.class')) return
+
+                byte[] classBytes = jarFile.getInputStream(entry).withCloseable { it.bytes }
+                def classNode = new ClassNode()
+                new ClassReader(classBytes).accept(classNode, 0)
+
+                invisibleAnnotationLists(classNode).each { annotations ->
+                    annotations.each { annotation ->
+                        if (annotationsToRemoveFromShadedJar.contains(annotation.desc)) {
+                            annotationsThatShouldHaveBeenRemoved.add("${entry.name}: ${annotation.desc}")
+                        } else {
+                            def annotationClassEntry = classEntryForAnnotationDescriptor(annotation.desc)
+                            if (jarFile.getJarEntry(annotationClassEntry) == null) {
+                                unresolvableAnnotations.add("${entry.name}: ${annotation.desc}")
+                            }
+                        }
+                        if (annotation.desc == 'Lgraphql/Contract;') {
+                            graphqlContractFound = true
+                        }
+                    }
+                }
+            }
+        }
+
+        def verificationErrors = []
+        if (!annotationsThatShouldHaveBeenRemoved.isEmpty()) {
+            verificationErrors.add("Found annotations that should have been removed:\n${annotationsThatShouldHaveBeenRemoved.join('\n')}")
+        }
+        if (!unresolvableAnnotations.isEmpty()) {
+            verificationErrors.add("Found invisible annotations whose types are not bundled; add them to annotationsToRemoveFromShadedJar:\n${unresolvableAnnotations.join('\n')}")
+        }
+        if (!graphqlContractFound) {
+            verificationErrors.add('graphql.Contract was removed from the shaded jar')
+        }
+        if (!verificationErrors.isEmpty()) {
+            throw new GradleException(verificationErrors.join('\n\n'))
+        }
+    }
+}
+
+/**
+ * Compiles a small Java 11 consumer against only the completed shaded JAR.
+ * Resolving {@code ExecutionContext.getOperationDirectives()} forces javac to
+ * inspect the shaded ImmutableList signature; {@code -Xlint:classfile -Werror}
+ * turns dangling annotation references into a build failure.
+ */
+def compileShadedJarConsumer = tasks.register('compileShadedJarConsumer', JavaCompile) {
+    group = 'verification'
+    description = 'Compile a consumer against the shaded jar with class-file warnings treated as errors'
+    dependsOn buildFinalJar
+
+    source fileTree('src/test/compiler') {
+        include '**/*.java'
+    }
+    classpath = files(buildFinalJar.flatMap { it.archiveFile })
+    destinationDirectory = layout.buildDirectory.dir('classes/shaded-jar-consumer')
+    options.release = 11
+    options.compilerArgs.addAll(['-Xlint:classfile', '-Werror'])
+}
+
+check.dependsOn verifyShadedClassAnnotations, compileShadedJarConsumer
 
 
 // --- TestNG TCK skip verification ---
@@ -406,8 +683,6 @@ task testng(type: Test) {
     dependsOn tasks.named('testClasses')
     doLast { verifyTestngSkips(it, expectedTestngSkips) }
 }
-check.dependsOn testng
-
 compileJava {
     options.compilerArgs += ["-parameters"]
     source file("build/generated-src"), sourceSets.main.java
@@ -563,12 +838,9 @@ tasks.register('testWithJava11', Test) {
     }
 }
 
-test.dependsOn testWithJava21
-test.dependsOn testWithJava17
-test.dependsOn testWithJava11
 
 jacoco {
-    toolVersion = "0.8.12"
+    toolVersion = "0.8.14"
 }
 
 jacocoTestReport {
@@ -579,15 +851,17 @@ jacocoTestReport {
         csv.required = false
     }
 
-    // Exclude generated ANTLR code from coverage
+    // Use the modified classes from classes-jacoco/ (with @Generated annotations)
+    // so CRC64 checksums match the execution data recorded during tests.
+    // Also exclude generated ANTLR code and shaded dependencies from coverage.
     afterEvaluate {
-        classDirectories.setFrom(files(classDirectories.files.collect {
-            fileTree(dir: it, exclude: [
-                    'graphql/parser/antlr/**',
-                    'graphql/com/google/**',
-                    'graphql/org/antlr/**'
-            ])
-        }))
+        classDirectories.setFrom(files(
+                fileTree(dir: layout.buildDirectory.dir('classes-jacoco/java/main'), exclude: [
+                        'graphql/parser/antlr/**',
+                        'graphql/com/google/**',
+                        'graphql/org/antlr/**'
+                ])
+        ))
     }
 }
 
@@ -597,49 +871,63 @@ jacocoTestReport {
 // The annotation class need not exist — JaCoCo only inspects the descriptor
 // string in the bytecode, and the JVM ignores unknown CLASS-retention
 // annotations.
+//
+// IMPORTANT: modifications are made on a COPY in classes-jacoco/ so that
+// the original (pristine) class files in classes/java/main are packaged
+// into the published jar unchanged.
 // ---------------------------------------------------------------------------
 tasks.register('markGeneratedEqualsHashCode') {
     description = 'Add @Generated annotation to equals/hashCode so JaCoCo ignores them'
     dependsOn classes
 
+    def originalDir = layout.buildDirectory.dir('classes/java/main')
+    def jacocoDir = layout.buildDirectory.dir('classes-jacoco/java/main')
+
+    inputs.dir(originalDir)
+    inputs.property("generatedAnnotationTaskVersion", 2)
+    outputs.dir(jacocoDir)
+
     doLast {
-        def dir = layout.buildDirectory.dir('classes/java/main').get().asFile
-        if (!dir.exists()) return
+        def src = originalDir.get().asFile
+        def dest = jacocoDir.get().asFile
+        project.delete(dest)
+        if (!src.exists()) return
+
+        // Copy all class files to a separate directory for JaCoCo
+        ant.copy(todir: dest) {
+            fileset(dir: src)
+        }
 
         def ANNOTATION = 'Lgraphql/coverage/Generated;'
 
-        dir.eachFileRecurse(groovy.io.FileType.FILES) { file ->
-            if (!file.name.endsWith('.class')) return
-
-            def bytes = file.bytes
-            def classNode = new org.objectweb.asm.tree.ClassNode()
-            new org.objectweb.asm.ClassReader(bytes).accept(classNode, 0)
-
-            boolean modified = false
+        rewriteClassFiles(dest) { classNode ->
+            int addedAnnotationCount = 0
             for (method in classNode.methods) {
                 if ((method.name == 'equals' && method.desc == '(Ljava/lang/Object;)Z') ||
                         (method.name == 'hashCode' && method.desc == '()I')) {
                     if (method.invisibleAnnotations == null) {
                         method.invisibleAnnotations = []
                     }
-                    method.invisibleAnnotations.add(new org.objectweb.asm.tree.AnnotationNode(ANNOTATION))
-                    modified = true
+                    if (!method.invisibleAnnotations.any { it.desc == ANNOTATION }) {
+                        method.invisibleAnnotations.add(new org.objectweb.asm.tree.AnnotationNode(ANNOTATION))
+                        addedAnnotationCount++
+                    }
                 }
             }
-
-            if (modified) {
-                def writer = new org.objectweb.asm.ClassWriter(0)
-                classNode.accept(writer)
-                file.bytes = writer.toByteArray()
-            }
+            return addedAnnotationCount
         }
     }
 }
 
-// Ensure the annotation task runs before anything that reads the main class files
+// Test tasks need the modified classes for JaCoCo coverage recording
 tasks.named('test') { dependsOn markGeneratedEqualsHashCode }
 tasks.named('compileTestJava') { dependsOn markGeneratedEqualsHashCode }
-tasks.named('jar') { dependsOn markGeneratedEqualsHashCode }
+
+// Prepend modified classes to the test classpath so the JaCoCo agent records
+// execution data with CRC64s that match the annotated bytecode.
+tasks.named('test', Test) {
+    classpath = files(layout.buildDirectory.dir('classes-jacoco/java/main')) + classpath
+}
 
 /*
  * The gradle.buildFinished callback is deprecated BUT there does not seem to be a decent alternative in gradle 7
@@ -712,8 +1000,8 @@ publishing {
                 // the Gradle ANTLR plugin. `1ac98bf` can be reverted and this comment removed once
                 // that issue is fixed and Gradle upgraded. See https://goo.gl/L92KiF and https://goo.gl/FY0PVR.
                 //
-                // Removing antlr4-runtime and guava because the classes we want to use are "shaded" into the jar itself
-                // via the shadowJar task
+                // Removing antlr4-runtime and guava because the classes we want to use are shaded and cleaned into the
+                // final jar produced by buildFinalJar.
                 def pomNode = asNode()
                 pomNode.dependencies.'*'.findAll() {
                     it.artifactId.text() == 'antlr4' || it.artifactId.text() == 'antlr4-runtime' || it.artifactId.text() == 'guava'
@@ -769,16 +1057,23 @@ signing {
     sign publishing.publications
 }
 
+// Signing must read the same verified final artifact that is published. This
+// explicit dependency also makes direct invocation of the signing task safe.
+tasks.named('signGraphqlJavaPublication') {
+    dependsOn verifyShadedClassAnnotations
+}
 
-// all publish tasks depend on the build task
+// Remote publication retains the existing full-build requirement. Both remote
+// and Maven Local publication additionally depend on artifact verification so
+// neither path can publish a plain, raw-shadowed, or uncleaned binary JAR.
 tasks.withType(PublishToMavenRepository) {
-    dependsOn build
+    dependsOn build, verifyShadedClassAnnotations
+}
+tasks.withType(PublishToMavenLocal) {
+    dependsOn verifyShadedClassAnnotations
 }
 
 // Only publish Maven POM, disable default Gradle modules file
 tasks.withType(GenerateModuleMetadata) {
     enabled = false
 }
-
-
-
