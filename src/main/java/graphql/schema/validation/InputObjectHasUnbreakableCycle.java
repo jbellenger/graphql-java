@@ -111,22 +111,10 @@ public class InputObjectHasUnbreakableCycle extends GraphQLTypeVisitorStub {
             SchemaValidationErrorCollector errorCollector
     ) {
         /*
-         * Finds input objects that cannot be given a finite value, using a worklist algorithm.
-         * See https://en.wikipedia.org/wiki/Data-flow_analysis#The_work_list_algorithm.
+         * Finds input objects that cannot be given a finite value.
          *
-         * First, this records which input objects depend on other input objects. It then starts with the types that
-         * clearly have a finite value and adds them to a work list:
-         *  - A regular input object has a finite value when all of its required input object fields have
-         *    finite values.
-         *  - A OneOf input object has a finite value when any one of its fields has a finite value.
-         *
-         * Each new finite type may therefore make more types finite. This continues until the work list is empty.
-         * We can then rescan the total list of input object types, and any type that hasn't been proven to have a
-         * finite value is inferred to have a non-finite value.
-         *
-         * Performance note:
-         * If I is the number of input object types and F is the total number of fields on them, then the analysis takes
-         * O(I + F) time and uses O(I + F) extra space.
+         * Start with types known to have a finite value, then repeatedly mark types that become finite because of them.
+         * Once no more types can be marked, report cycles among the remaining types.
          */
 
         // Prepare a place to store the state of each input object.
